@@ -1,5 +1,5 @@
 
-const APP_VERSION='3.0.0';
+const APP_VERSION='3.0.1';
 const DB_NAME='willy-investment-v3', DB_VERSION=1;
 const stores=['assets','accounts','transactions','dividends'];
 const MIRROR_KEY='wais-v3-mirror';
@@ -22,13 +22,13 @@ function initialPortfolio(){
  const mk=()=>uid(),assets=[],accounts=[],transactions=[],dividends=[];
  const addA=(symbol,name,type,currentPrice,note)=>{const id=mk();assets.push({id,symbol,name,market:'台股',type,currentPrice,priceUpdatedAt:currentPrice?nowLocal():'',status:'active',note});return id};
  const addC=(assetId,name,dividendMode,note)=>{const id=mk();accounts.push({id,assetId,name,dividendMode,note});return id};
- const addT=(assetId,accountId,quantity,price,note)=>transactions.push({id:mk(),assetId,accountId,type:'initial',date:'2026-07-13',quantity,price,fee:0,note});
- let a=addA('0050','元大台灣50','ETF',0,'核心長期持有'),c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,29050,79.27,'初始持股');
- a=addA('00997A','主動式美股成長ETF','主動式ETF',0,'成長型部位');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,40000,10.22,'初始持股');
- a=addA('00400A','主動式ETF','主動式ETF',14.10,'配息用途');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,10000,10,'初始持股');
+ const addT=(assetId,accountId,quantity,price,totalCost,note)=>transactions.push({id:mk(),assetId,accountId,type:'initial',date:'2026-07-13',quantity,price,fee:0,totalCost,note});
+ let a=addA('0050','元大台灣50','ETF',0,'核心長期持有'),c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,29050,79.27,2302878,'初始持股');
+ a=addA('00997A','主動群益美國增長','主動式ETF',0,'成長型部位');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,40000,10.22,408968,'初始持股');
+ a=addA('00400A','主動國泰動能高息','主動式ETF',14.10,'配息用途');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,10000,9.88,98800,'初始持股');
  a=addA('2421','建準','個股',138,'個人與員工福利信託分開管理');
  const p=addC(a,'個人持股','cash','配息實際現金入帳'),t=addC(a,'員工福利信託','reinvest','股息留在信託並再投入');
- addT(a,p,2031,125,'個人持股初始匯入');addT(a,t,970,106.81,'員工福利信託初始匯入');
+ addT(a,p,2031,125,253875,'個人持股初始匯入');addT(a,t,970,106.81,103606,'員工福利信託初始匯入');
  return {assets,accounts,transactions,dividends};
 }
 function saveMirror(){
@@ -54,7 +54,23 @@ let state={assets:[],accounts:[],transactions:[],dividends:[]};
 async function migrateData(){
  let changed=false;
  for(const a of state.assets){
+
+   if(a.symbol==='00400A' && a.name!=='主動國泰動能高息'){a.name='主動國泰動能高息';await putRaw('assets',a);changed=true}
+   if(a.symbol==='00997A' && a.name!=='主動群益美國增長'){a.name='主動群益美國增長';await putRaw('assets',a);changed=true}
+
    if(a.symbol==='2421' && a.name!=='建準'){a.name='建準';await put('assets',a);changed=true}
+ }
+ for(const t of state.transactions){
+   if(t.type!=='initial')continue;
+   const a=state.assets.find(x=>x.id===t.assetId);
+   const acc=state.accounts.find(x=>x.id===t.accountId);
+   let exact=0;
+   if(a?.symbol==='0050' && num(t.quantity)===29050)exact=2302878;
+   if(a?.symbol==='00997A' && num(t.quantity)===40000)exact=408968;
+   if(a?.symbol==='00400A' && num(t.quantity)===10000)exact=98800;
+   if(a?.symbol==='2421' && acc?.name==='個人持股' && num(t.quantity)===2031)exact=253875;
+   if(a?.symbol==='2421' && acc?.name==='員工福利信託' && num(t.quantity)===970)exact=103606;
+   if(exact && num(t.totalCost)!==exact){t.totalCost=exact;await putRaw('transactions',t);changed=true}
  }
  return changed;
 }
@@ -71,13 +87,23 @@ async function load(){
 function holdings(){
  const map={};
  state.assets.forEach(a=>map[a.id]={asset:a,qty:0,cost:0,marketValue:0,accounts:{}});
- state.transactions.forEach(t=>{
-  if(!map[t.assetId])return;
-  const sign=t.type==='sell'?-1:1;
-  map[t.assetId].qty+=sign*num(t.quantity);
-  if(['initial','buy','reinvest'].includes(t.type))map[t.assetId].cost+=num(t.quantity)*num(t.price)+num(t.fee);
-  if(t.type==='sell')map[t.assetId].cost=Math.max(0,map[t.assetId].cost-num(t.quantity)*num(t.price));
-  const ac=map[t.assetId].accounts[t.accountId]||{qty:0};ac.qty+=sign*num(t.quantity);map[t.assetId].accounts[t.accountId]=ac;
+ const txs=[...state.transactions].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+ txs.forEach(t=>{
+  const h=map[t.assetId];if(!h)return;
+  const q=num(t.quantity),fee=num(t.fee),exact=num(t.totalCost);
+  const ac=h.accounts[t.accountId]||{qty:0,cost:0};
+  if(['initial','buy','reinvest','stock_dividend','adjustment'].includes(t.type)){
+    const addedCost=t.type==='stock_dividend'||t.type==='adjustment'?0:(exact>0?exact:q*num(t.price)+fee);
+    h.qty+=q;h.cost+=addedCost;ac.qty+=q;ac.cost+=addedCost;
+  }else if(t.type==='sell'){
+    const avg=h.qty>0?h.cost/h.qty:0;
+    const acAvg=ac.qty>0?ac.cost/ac.qty:avg;
+    h.cost=Math.max(0,h.cost-avg*q);
+    h.qty=Math.max(0,h.qty-q);
+    ac.cost=Math.max(0,ac.cost-acAvg*q);
+    ac.qty=Math.max(0,ac.qty-q);
+  }
+  h.accounts[t.accountId]=ac;
  });
  Object.values(map).forEach(x=>x.marketValue=x.qty*num(x.asset.currentPrice));
  return map;
@@ -120,11 +146,11 @@ function renderAccounts(){
 }
 function renderTransactions(){
  const rows=[...state.transactions].sort((a,b)=>b.date.localeCompare(a.date));
- transactionsTable.innerHTML=rows.map(t=>`<tr><td>${t.date}</td><td>${assetName(t.assetId)}</td><td>${accountName(t.accountId)}</td><td>${labels[t.type]||t.type}</td><td>${num(t.quantity).toLocaleString()}</td><td>${fmt(t.price)}</td><td>${fmt(t.fee)}</td><td>${actionButtons('transactions',t.id)}</td></tr>`).join('')||'<tr><td colspan="8" class="muted">尚無資料</td></tr>';
+ transactionsTable.innerHTML=rows.map(t=>`<tr><td>${t.date}</td><td>${assetName(t.assetId)}</td><td>${accountName(t.accountId)}</td><td>${labels[t.type]||t.type}</td><td>${num(t.quantity).toLocaleString()}</td><td>${fmt(t.price)}</td><td>${fmt(t.fee)}</td><td>${t.totalCost?fmt(t.totalCost):'—'}</td><td>${actionButtons('transactions',t.id)}</td></tr>`).join('')||'<tr><td colspan="9" class="muted">尚無資料</td></tr>';
 }
 function renderDividends(){
  const rows=[...state.dividends].sort((a,b)=>b.date.localeCompare(a.date));
- dividendsTable.innerHTML=rows.map(d=>`<tr><td>${d.date}</td><td>${assetName(d.assetId)}</td><td>${accountName(d.accountId)}</td><td>${labels[d.mode]}${d.mode==='reinvest'&&d.reinvestQuantity?`<div class="muted">+${num(d.reinvestQuantity).toLocaleString()} 股 → ${assetName(d.reinvestAssetId||d.assetId)}</div>`:''}</td><td>${num(d.eligibleShares).toLocaleString()}</td><td>${fmtPrice(d.perShare)}</td><td>${fmt(d.netAmount)}${d.mode==='reinvest'&&num(d.residualCash)>0?`<div class="muted">餘額 ${fmt(d.residualCash)}</div>`:''}</td><td>${actionButtons('dividends',d.id)}</td></tr>`).join('')||'<tr><td colspan="8" class="muted">尚無資料</td></tr>';
+ dividendsTable.innerHTML=rows.map(d=>`<tr><td>${d.date}</td><td>${assetName(d.assetId)}</td><td>${accountName(d.accountId)}</td><td>${labels[d.mode]}${d.mode==='reinvest'&&d.reinvestQuantity?`<div class="muted">+${num(d.reinvestQuantity).toLocaleString()} 股 → ${assetName(d.reinvestAssetId||d.assetId)}</div>`:''}</td><td>${num(d.eligibleShares).toLocaleString()}</td><td>${fmtPrice(d.perShare)}</td><td>${fmt(d.netAmount)}${d.mode==='reinvest'&&num(d.residualCash)>0?`<div class="muted">餘額 ${fmt(d.residualCash)}</div>`:''}</td><td>${actionButtons('dividends',d.id)}</td></tr>`).join('')||'<tr><td colspan="9" class="muted">尚無資料</td></tr>';
 }
 function renderDashboard(){
  const h=holdings(), vals=Object.values(h);
@@ -187,7 +213,7 @@ priceCenterForm.addEventListener('submit',async e=>{
 function formObject(form){return Object.fromEntries(new FormData(form).entries())}
 assetForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();x.currentPrice=num(x.currentPrice);if(!x.priceUpdatedAt)x.priceUpdatedAt=nowLocal();await put('assets',x);e.target.closest('dialog').close();await load();toast('標的已儲存')});
 accountForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();await put('accounts',x);e.target.closest('dialog').close();await load();toast('持有來源已儲存')});
-transactionForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();['quantity','price','fee'].forEach(k=>x[k]=num(x[k]));await put('transactions',x);e.target.closest('dialog').close();await load();toast('交易已儲存')});
+transactionForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();['quantity','price','fee','totalCost'].forEach(k=>x[k]=num(x[k]));await put('transactions',x);e.target.closest('dialog').close();await load();toast('交易已儲存')});
 dividendForm.addEventListener('submit',async e=>{
  e.preventDefault();
  const x=formObject(e.target);
