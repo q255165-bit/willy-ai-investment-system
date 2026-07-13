@@ -37,3 +37,12 @@ dialog form{padding:20px}.dialog-head{display:flex;justify-content:space-between
   .panel-head .primary{padding:9px 11px;font-size:.86rem;max-width:110px}
   .panel-head{gap:10px}
 }
+
+.head-actions{display:flex;gap:8px;align-items:center}
+.dialog-note{color:#94a3b8}
+.price-center-list{display:grid;gap:10px;max-height:55vh;overflow:auto}
+.price-row{display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:center;background:#0f172a;border:1px solid #263249;border-radius:12px;padding:12px}
+.price-row small{display:block;color:#94a3b8}
+.price-row input{width:100%;background:#111827;border:1px solid #334155;color:#e5e7eb;border-radius:10px;padding:10px;text-align:right}
+.inline-price-btn{margin-top:10px;width:100%}
+@media(max-width:600px){.head-actions{flex-direction:column}.head-actions>*{width:100%}}

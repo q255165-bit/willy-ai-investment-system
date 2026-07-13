@@ -42,7 +42,7 @@
       <div class="panel">
         <div class="panel-head">
           <div><h2>持股總覽</h2><p>依標的彙總所有帳戶與交易</p></div>
-          <button class="primary" data-open="assetDialog">＋新增標的</button>
+          <div class="head-actions"><button class="ghost" data-open="priceCenterDialog">更新現價</button><button class="primary" data-open="assetDialog">＋新增標的</button></div>
         </div>
         <div id="portfolioCards" class="card-grid empty-state">尚無投資標的</div>
       </div>
@@ -153,6 +153,14 @@
     <div class="dialog-actions"><button type="button" class="ghost" data-close-dialog>取消</button><button value="default" class="primary">儲存</button></div>
   </form></dialog>
 
+
+
+  <dialog id="priceCenterDialog"><form method="dialog" id="priceCenterForm">
+    <div class="dialog-head"><h3>行情管理中心</h3><button type="button" class="icon" data-close-dialog>×</button></div>
+    <p class="dialog-note">一次更新全部標的現價，未填寫者不變更。</p>
+    <div id="priceCenterList" class="price-center-list"></div>
+    <div class="dialog-actions"><button type="button" class="ghost" data-close-dialog>取消</button><button class="primary">儲存全部現價</button></div>
+  </form></dialog>
 
   <nav class="mobile-nav" aria-label="手機導覽">
     <button class="mobile-tab active" data-view="dashboard">首頁</button>

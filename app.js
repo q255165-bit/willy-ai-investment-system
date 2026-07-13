@@ -4,6 +4,7 @@ const stores=['assets','accounts','transactions','dividends'];
 let db, deferredPrompt;
 
 const fmt=n=>new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(Number(n||0));
+const fmtPrice=n=>new Intl.NumberFormat('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:4}).format(Number(n||0));
 const num=n=>Number(n||0);
 const uid=()=>crypto.randomUUID();
 const today=()=>new Date().toISOString().slice(0,10);
@@ -60,7 +61,7 @@ function assetName(id){const a=state.assets.find(x=>x.id===id);return a?`${a.sym
 function accountName(id){return state.accounts.find(x=>x.id===id)?.name||'—'}
 function actionButtons(store,id){return `<div class="actions"><button class="mini" data-edit="${store}:${id}">編輯</button><button class="mini delete" data-delete="${store}:${id}">刪除</button></div>`}
 function renderAssets(){
- assetsTable.innerHTML=state.assets.map(a=>`<tr><td><strong>${a.symbol}</strong></td><td>${a.name}</td><td>${a.market}</td><td>${a.type}</td><td>${fmt(a.currentPrice)}<div class="muted">${a.priceUpdatedAt?new Date(a.priceUpdatedAt).toLocaleString('zh-TW'):''}</div></td><td>${labels[a.status]}</td><td>${actionButtons('assets',a.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">尚無資料</td></tr>';
+ assetsTable.innerHTML=state.assets.map(a=>`<tr><td><strong>${a.symbol}</strong></td><td>${a.name}</td><td>${a.market}</td><td>${a.type}</td><td>NT$ ${fmtPrice(a.currentPrice)}<div class="muted">${a.priceUpdatedAt?new Date(a.priceUpdatedAt).toLocaleString('zh-TW'):''}</div></td><td>${labels[a.status]}</td><td>${actionButtons('assets',a.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">尚無資料</td></tr>';
 }
 function renderAccounts(){
  accountsTable.innerHTML=state.accounts.map(a=>`<tr><td>${assetName(a.assetId)}</td><td>${a.name}</td><td>${labels[a.dividendMode]}</td><td>${a.note||''}</td><td>${actionButtons('accounts',a.id)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">尚無資料</td></tr>';
@@ -83,7 +84,7 @@ function renderDashboard(){
  assetCount.textContent=state.assets.filter(a=>a.status==='active').length;
  const cards=vals.filter(x=>x.asset.status!=='archived').map(x=>{
   const avg=x.qty?x.cost/x.qty:0,p=x.marketValue-x.cost;
-  return `<article class="asset-card"><header><div><h3>${x.asset.symbol}</h3><small>${x.asset.name}</small></div><div style="text-align:right"><span class="muted" style="display:block;font-size:.72rem">現價</span><strong>${fmt(x.asset.currentPrice)}</strong><small style="display:block">${x.asset.priceUpdatedAt?new Date(x.asset.priceUpdatedAt).toLocaleString('zh-TW'):''}</small></div></header><div class="asset-stats"><div><span>持股</span><strong>${x.qty.toLocaleString()} 股</strong></div><div><span>平均成本</span><strong>${fmt(avg)}</strong></div><div><span>市值</span><strong>${fmt(x.marketValue)}</strong></div><div><span>損益</span><strong class="${p>=0?'positive':'negative'}">${fmt(p)}</strong></div></div></article>`;
+  return `<article class="asset-card"><header><div><h3>${x.asset.symbol}</h3><small>${x.asset.name}</small></div><div style="text-align:right"><span class="muted" style="display:block;font-size:.72rem">現價</span><strong>NT$ ${fmtPrice(x.asset.currentPrice)}</strong><small style="display:block">${x.asset.priceUpdatedAt?new Date(x.asset.priceUpdatedAt).toLocaleString('zh-TW'):''}</small></div></header><div class="asset-stats"><div><span>持股</span><strong>${x.qty.toLocaleString()} 股</strong></div><div><span>平均成本</span><strong>NT$ ${fmtPrice(avg)}</strong></div><div><span>市值</span><strong>${fmt(x.marketValue)}</strong></div><div><span>損益</span><strong class="${p>=0?'positive':'negative'}">${fmt(p)}</strong></div></div><button class="ghost inline-price-btn" data-price-edit="${x.asset.id}">更新現價</button></article>`;
  }).join('');
  portfolioCards.classList.toggle('empty-state',!cards);portfolioCards.innerHTML=cards||'尚無投資標的';
 }
@@ -96,7 +97,10 @@ document.addEventListener('click',async e=>{
  const mtab=e.target.closest('.mobile-tab');if(mtab){document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));mtab.classList.add('active');document.getElementById(mtab.dataset.view).classList.add('active')}
 
  const tab=e.target.closest('.tab'); if(tab){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));tab.classList.add('active');document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.toggle('active',x.dataset.view===tab.dataset.view));document.getElementById(tab.dataset.view).classList.add('active')}
- const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());const p=d.querySelector('[name=priceUpdatedAt]');if(p)p.value=nowLocal();renderSelects();d.showModal()}
+ const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());const p=d.querySelector('[name=priceUpdatedAt]');if(p)p.value=nowLocal();renderSelects();if(d.id==='priceCenterDialog')renderPriceCenter();d.showModal()}
+
+ const pe=e.target.closest('[data-price-edit]');if(pe){const a=state.assets.find(x=>x.id===pe.dataset.priceEdit);const v=prompt(`${a.symbol} ${a.name}\n請輸入最新現價：`,a.currentPrice||'');if(v!==null&&v!==''){const n=Number(v);if(Number.isFinite(n)&&n>=0){a.currentPrice=n;a.priceUpdatedAt=nowLocal();await put('assets',a);await load();toast('現價已更新')}else alert('請輸入有效價格')}}
+
  const ed=e.target.closest('[data-edit]');if(ed){const [store,id]=ed.dataset.edit.split(':');editRecord(store,id)}
  const de=e.target.closest('[data-delete]');if(de){const [store,id]=de.dataset.delete.split(':');if(confirm('確定刪除這筆資料？')){await del(store,id);await load();toast('已刪除')}}
 });
@@ -108,6 +112,17 @@ function editRecord(store,id){
  d.showModal();
 }
 document.querySelectorAll('select[name=assetId]').forEach(s=>s.addEventListener('change',e=>{const f=e.target.closest('form');if(f?.elements.accountId)refreshAccountOptions(f.elements.accountId,e.target.value)}));
+
+
+function renderPriceCenter(){
+ const box=document.getElementById('priceCenterList');
+ box.innerHTML=state.assets.filter(a=>a.status!=='archived').map(a=>`<label class="price-row"><span><strong>${a.symbol} ${a.name}</strong><small>目前：NT$ ${fmtPrice(a.currentPrice)}</small></span><input type="number" step="0.0001" min="0" name="price_${a.id}" value="${a.currentPrice||''}" placeholder="現價"></label>`).join('')||'<div class="muted">尚無投資標的</div>';
+}
+priceCenterForm.addEventListener('submit',async e=>{
+ e.preventDefault();const fd=new FormData(e.target);let count=0;
+ for(const a of state.assets){const v=fd.get(`price_${a.id}`);if(v!==null&&String(v).trim()!==''){const n=Number(v);if(Number.isFinite(n)&&n>=0){a.currentPrice=n;a.priceUpdatedAt=nowLocal();await put('assets',a);count++}}}
+ e.target.closest('dialog').close();await load();toast(`已更新 ${count} 檔現價`);
+});
 
 function formObject(form){return Object.fromEntries(new FormData(form).entries())}
 assetForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();x.currentPrice=num(x.currentPrice);if(!x.priceUpdatedAt)x.priceUpdatedAt=nowLocal();await put('assets',x);e.target.closest('dialog').close();await load();toast('標的已儲存')});

@@ -26,3 +26,9 @@ Repository → Settings → Pages → Deploy from a branch → main / root
 - 標的卡片與清單清楚顯示現價
 - 新增現價更新時間
 - 修正 PWA 圖示與離線快取路徑
+
+## V2.1.0
+- 新增行情管理中心
+- 支援逐檔與批次更新現價
+- 現價與平均成本顯示小數
+- 更新後即時計算市值與損益
