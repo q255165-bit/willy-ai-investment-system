@@ -14,7 +14,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-      <h1>投資管理中心 <span>V3.0.2 Stable</span></h1>
+      <h1>投資管理中心 <span>V3.1.0 Stable</span></h1>
     </div>
     <button id="installBtn" class="ghost hidden">安裝 App</button>
   </header>
@@ -35,6 +35,7 @@
       <button class="tab" data-view="accounts">持有來源</button>
       <button class="tab" data-view="transactions">交易紀錄</button>
       <button class="tab" data-view="dividends">配息紀錄</button>
+      <button class="tab" data-view="trust">員工信託</button>
       <button class="tab" data-view="backup">備份還原</button>
     </nav>
 
@@ -73,6 +74,40 @@
       <div class="panel">
         <div class="panel-head"><div><h2>配息紀錄</h2><p>現金實收與信託再投入分開統計，支援直接修改</p></div><button class="primary" data-open="dividendDialog">＋新增配息</button></div>
         <div class="table-wrap"><table><thead><tr><th>日期</th><th>標的</th><th>來源</th><th>方式</th><th>適用股數</th><th>每股股利</th><th>實收／再投入</th><th>操作</th></tr></thead><tbody id="dividendsTable"></tbody></table></div>
+      </div>
+    </section>
+
+
+    <section id="trust" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>員工信託管理中心</h2>
+            <p>以月度快照追蹤持股、成本、固定提撥與股息再投入，不假設經理人的實際成交明細。</p>
+          </div>
+          <button class="primary" data-open="trustSnapshotDialog">＋新增快照</button>
+        </div>
+        <div class="trust-summary-grid">
+          <article class="metric"><span>最新持股</span><strong id="trustLatestShares">0</strong></article>
+          <article class="metric"><span>本期增加</span><strong id="trustShareDelta">0</strong></article>
+          <article class="metric"><span>本期提撥</span><strong id="trustContributionTotal">NT$0</strong></article>
+          <article class="metric"><span>本期股息再投入</span><strong id="trustDividendReinvest">NT$0</strong></article>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>月份</th><th>期末持股</th><th>成本均價</th><th>總成本</th>
+                <th>員工提撥</th><th>公司提撥</th><th>股息再投入</th><th>新增股數</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="trustTable"></tbody>
+          </table>
+        </div>
+        <div class="notice trust-notice">
+          <strong>計算原則：</strong>「新增股數」只代表本期持股變化；若你不知道實際成交價，系統不會硬推定。
+          股息再投入可直接填入已知金額；若未知則留空，並標示為未確認。
+        </div>
       </div>
     </section>
 
@@ -168,6 +203,33 @@
 
 
 
+
+  <dialog id="trustSnapshotDialog"><form method="dialog" id="trustSnapshotForm">
+    <div class="dialog-head"><h3>員工信託月度快照</h3><button type="button" class="icon" data-close-dialog>×</button></div>
+    <input type="hidden" name="id" />
+    <div class="form-grid">
+      <label>標的<select name="assetId" required></select></label>
+      <label>持有來源<select name="accountId" required></select></label>
+      <label>月份<input name="month" type="month" required /></label>
+      <label>期末持股<input name="endingShares" type="number" step="0.0001" min="0" required /></label>
+      <label>期末成本均價<input name="averageCost" type="number" step="0.0001" min="0" /></label>
+      <label>期末總成本<input name="totalCost" type="number" step="0.01" min="0" placeholder="若已知可直接填入" /></label>
+      <label>員工提撥<input name="employeeContribution" type="number" step="0.01" min="0" value="2500" /></label>
+      <label>公司提撥<input name="companyContribution" type="number" step="0.01" min="0" value="2500" /></label>
+      <label>股息再投入<input name="dividendReinvest" type="number" step="0.01" min="0" placeholder="未知可留空" /></label>
+      <label>資料來源<select name="dataConfidence">
+        <option value="official">官方／信託平台資料</option>
+        <option value="partial">部分已知</option>
+        <option value="estimated">系統推估</option>
+      </select></label>
+      <label class="full">備註<textarea name="note" placeholder="例如：本月含現金股利再投入，但無法得知經理人實際成交日與成交價"></textarea></label>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="ghost" data-close-dialog>取消</button>
+      <button class="primary">儲存快照</button>
+    </div>
+  </form></dialog>
+
   <dialog id="priceCenterDialog"><form method="dialog" id="priceCenterForm">
     <div class="dialog-head"><h3>行情管理中心</h3><button type="button" class="icon" data-close-dialog>×</button></div>
     <p class="dialog-note">一次更新全部標的現價，未填寫者不變更。</p>
@@ -180,6 +242,7 @@
     <button class="mobile-tab" data-view="assets">標的</button>
     <button class="mobile-tab" data-view="transactions">交易</button>
     <button class="mobile-tab" data-view="dividends">配息</button>
+    <button class="mobile-tab" data-view="trust">信託</button>
     <button class="mobile-tab" data-view="backup">更多</button>
   </nav>
 
