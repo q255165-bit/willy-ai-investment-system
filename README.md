@@ -42,3 +42,11 @@ Repository → Settings → Pages → Deploy from a branch → main / root
 - 員工信託可依持有來源預設為股息再投入
 - 現金股息、再投入股息與剩餘現金分開呈現
 - 匯出備份會記錄正確應用程式版本
+
+## V3.0.0 Stable
+- 使用獨立 V3 資料庫
+- 加入 localStorage 本機鏡像
+- 主資料為空時嘗試自動還原
+- 內建 Willy 初始持股恢復
+- 2421 名稱固定校正為建準
+- 跨裝置仍需 JSON 匯出／匯入

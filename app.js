@@ -1,7 +1,8 @@
 
-const APP_VERSION='2.2.0';
-const DB_NAME='willy-investment-v2', DB_VERSION=1;
+const APP_VERSION='3.0.0';
+const DB_NAME='willy-investment-v3', DB_VERSION=1;
 const stores=['assets','accounts','transactions','dividends'];
+const MIRROR_KEY='wais-v3-mirror';
 let db, deferredPrompt;
 
 const fmt=n=>new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(Number(n||0));
@@ -15,6 +16,27 @@ const labels={
   cash:'現金入帳',reinvest:'股息再投入',record_only:'僅記錄',
   initial:'初始持股',buy:'買進',sell:'賣出',stock_dividend:'股票股利',adjustment:'股數調整'
 };
+
+
+function initialPortfolio(){
+ const mk=()=>uid(),assets=[],accounts=[],transactions=[],dividends=[];
+ const addA=(symbol,name,type,currentPrice,note)=>{const id=mk();assets.push({id,symbol,name,market:'台股',type,currentPrice,priceUpdatedAt:currentPrice?nowLocal():'',status:'active',note});return id};
+ const addC=(assetId,name,dividendMode,note)=>{const id=mk();accounts.push({id,assetId,name,dividendMode,note});return id};
+ const addT=(assetId,accountId,quantity,price,note)=>transactions.push({id:mk(),assetId,accountId,type:'initial',date:'2026-07-13',quantity,price,fee:0,note});
+ let a=addA('0050','元大台灣50','ETF',0,'核心長期持有'),c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,29050,79.27,'初始持股');
+ a=addA('00997A','主動式美股成長ETF','主動式ETF',0,'成長型部位');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,40000,10.22,'初始持股');
+ a=addA('00400A','主動式ETF','主動式ETF',14.10,'配息用途');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,10000,10,'初始持股');
+ a=addA('2421','建準','個股',138,'個人與員工福利信託分開管理');
+ const p=addC(a,'個人持股','cash','配息實際現金入帳'),t=addC(a,'員工福利信託','reinvest','股息留在信託並再投入');
+ addT(a,p,2031,125,'個人持股初始匯入');addT(a,t,970,106.81,'員工福利信託初始匯入');
+ return {assets,accounts,transactions,dividends};
+}
+function saveMirror(){
+ try{localStorage.setItem(MIRROR_KEY,JSON.stringify({version:APP_VERSION,data:state,at:new Date().toISOString()}))}catch(e){}
+}
+function readMirror(){
+ try{const x=localStorage.getItem(MIRROR_KEY);return x?JSON.parse(x):null}catch(e){return null}
+}
 
 function openDB(){
  return new Promise((resolve,reject)=>{
@@ -32,15 +54,18 @@ let state={assets:[],accounts:[],transactions:[],dividends:[]};
 async function migrateData(){
  let changed=false;
  for(const a of state.assets){
-   if(a.symbol==='2421' && a.name==='信錦'){a.name='建準';await put('assets',a);changed=true}
+   if(a.symbol==='2421' && a.name!=='建準'){a.name='建準';await put('assets',a);changed=true}
  }
  return changed;
 }
 async function load(){
  for(const s of stores)state[s]=await all(s);
+ const total=stores.reduce((n,k)=>n+state[k].length,0);
+ if(total===0){const m=readMirror();if(m?.data){for(const k of stores){await clearStore(k);for(const r of (m.data[k]||[]))await put(k,r)}for(const k of stores)state[k]=await all(k);}}
  const changed=await migrateData();
  if(changed)for(const s of stores)state[s]=await all(s);
  render();
+ saveMirror();
 }
 
 function holdings(){
@@ -217,20 +242,11 @@ importFile.onchange=async e=>{
  }catch(err){alert('匯入失敗：'+err.message)}finally{e.target.value=''}
 };
 clearBtn.onclick=async()=>{if(confirm('這會清除目前瀏覽器中的全部投資資料，確定嗎？')){for(const s of stores)await clearStore(s);await load();toast('全部資料已清除')}};
-seedBtn.onclick=async()=>{
- if(state.assets.length&&!confirm('已有資料，仍要加入範例資料嗎？'))return;
- const a2421={id:uid(),symbol:'2421',name:'建準',market:'台股',type:'個股',currentPrice:125,priceUpdatedAt:nowLocal(),status:'active',note:''};
- const a0050={id:uid(),symbol:'0050',name:'元大台灣50',market:'台股',type:'ETF',currentPrice:0,priceUpdatedAt:nowLocal(),status:'active',note:''};
- await put('assets',a2421);await put('assets',a0050);
- const personal={id:uid(),assetId:a2421.id,name:'個人持股',dividendMode:'cash',note:'配息實際現金入帳'};
- const trust={id:uid(),assetId:a2421.id,name:'員工福利信託',dividendMode:'reinvest',note:'股息留在信託並再投入'};
- await put('accounts',personal);await put('accounts',trust);
- await put('transactions',{id:uid(),assetId:a2421.id,accountId:personal.id,type:'initial',date:today(),quantity:2031,price:125,fee:0,note:'初始持股'});
- await put('transactions',{id:uid(),assetId:a2421.id,accountId:trust.id,type:'initial',date:today(),quantity:970,price:106.81,fee:0,note:'員工福利信託初始持股'});
- await load();toast('Willy 範例資料已載入');
-};
+seedBtn.onclick=async()=>{if(state.assets.length&&!confirm('這會以 Willy 初始持股取代目前資料，確定嗎？'))return;const data=initialPortfolio();for(const k of stores){await clearStore(k);for(const r of data[k])await put(k,r)}await load();toast('Willy 初始持股已恢復');};
 
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;installBtn.classList.remove('hidden')});
 installBtn.onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;installBtn.classList.add('hidden')}};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');
 (async()=>{db=await openDB();await load()})();
+
+window.addEventListener('beforeunload',saveMirror);

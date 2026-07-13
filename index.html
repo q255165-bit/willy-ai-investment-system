@@ -14,7 +14,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-      <h1>投資管理中心 <span>V2.2.0</span></h1>
+      <h1>投資管理中心 <span>V3.0.0 Stable</span></h1>
     </div>
     <button id="installBtn" class="ghost hidden">安裝 App</button>
   </header>
@@ -83,11 +83,11 @@
         <div class="backup-actions">
           <button id="exportBtn" class="primary">匯出 JSON 完整備份</button>
           <label class="file-button">匯入 JSON 備份<input id="importFile" type="file" accept=".json,application/json" /></label>
-          <button id="seedBtn" class="ghost">載入 Willy 範例資料</button>
+          <button id="seedBtn" class="ghost">恢復 Willy 初始持股</button>
           <button id="clearBtn" class="danger">清除全部資料</button>
         </div>
         <div class="notice">
-          <strong>建議：</strong>每週將備份檔另存至 Google Drive。公開 GitHub 程式庫不會包含你的持股資料。
+          <strong>資料安全：</strong>系統會同時保存主要資料與本機鏡像；主資料為空時會嘗試自動還原。每週仍建議匯出 JSON 至 Google Drive。
         </div>
       </div>
     </section>
