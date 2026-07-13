@@ -1,5 +1,5 @@
 
-const APP_VERSION='3.0.1';
+const APP_VERSION='3.0.2';
 const DB_NAME='willy-investment-v3', DB_VERSION=1;
 const stores=['assets','accounts','transactions','dividends'];
 const MIRROR_KEY='wais-v3-mirror';
@@ -55,8 +55,8 @@ async function migrateData(){
  let changed=false;
  for(const a of state.assets){
 
-   if(a.symbol==='00400A' && a.name!=='主動國泰動能高息'){a.name='主動國泰動能高息';await putRaw('assets',a);changed=true}
-   if(a.symbol==='00997A' && a.name!=='主動群益美國增長'){a.name='主動群益美國增長';await putRaw('assets',a);changed=true}
+   if(a.symbol==='00400A' && a.name!=='主動國泰動能高息'){a.name='主動國泰動能高息';await put('assets',a);changed=true}
+   if(a.symbol==='00997A' && a.name!=='主動群益美國增長'){a.name='主動群益美國增長';await put('assets',a);changed=true}
 
    if(a.symbol==='2421' && a.name!=='建準'){a.name='建準';await put('assets',a);changed=true}
  }
@@ -70,7 +70,7 @@ async function migrateData(){
    if(a?.symbol==='00400A' && num(t.quantity)===10000)exact=98800;
    if(a?.symbol==='2421' && acc?.name==='個人持股' && num(t.quantity)===2031)exact=253875;
    if(a?.symbol==='2421' && acc?.name==='員工福利信託' && num(t.quantity)===970)exact=103606;
-   if(exact && num(t.totalCost)!==exact){t.totalCost=exact;await putRaw('transactions',t);changed=true}
+   if(exact && num(t.totalCost)!==exact){t.totalCost=exact;await put('transactions',t);changed=true}
  }
  return changed;
 }
@@ -256,16 +256,59 @@ dividendForm.addEventListener('submit',async e=>{
  toast(x.mode==='reinvest'?'再投入配息已儲存':'配息已儲存');
 });
 
+
+function normalizeBackup(parsed){
+ const raw=parsed?.data||parsed;
+ if(!raw || typeof raw!=='object')throw new Error('找不到可匯入的資料內容');
+ const normalized={};
+ for(const s of stores)normalized[s]=Array.isArray(raw[s])?raw[s]:[];
+ if(!stores.some(s=>normalized[s].length))throw new Error('備份檔沒有任何投資資料');
+ for(const s of stores){
+   normalized[s]=normalized[s].filter(x=>x&&typeof x==='object').map(x=>({...x,id:x.id||uid()}));
+ }
+ return normalized;
+}
+async function replaceAllData(data){
+ const snapshot={};
+ for(const s of stores)snapshot[s]=await all(s);
+ try{
+   for(const s of stores)await clearStore(s);
+   for(const s of stores)for(const r of data[s])await put(s,r);
+ }catch(err){
+   for(const s of stores)await clearStore(s);
+   for(const s of stores)for(const r of snapshot[s])await put(s,r);
+   throw err;
+ }
+}
+
 exportBtn.onclick=async()=>{
- const payload={app:'Willy AI Investment System',version:APP_VERSION,exportedAt:new Date().toISOString(),data:state};
+ const payload={app:'Willy AI Investment System',version:APP_VERSION,exportedAt:new Date().toISOString(),recordCounts:Object.fromEntries(stores.map(s=>[s,state[s].length])),data:state};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');
  a.href=URL.createObjectURL(blob);a.download=`Willy-Investment-Backup-${today()}.json`;a.click();URL.revokeObjectURL(a.href);
 };
 importFile.onchange=async e=>{
- try{const text=await e.target.files[0].text(),p=JSON.parse(text);if(!p.data)throw new Error('格式不正確');
-  if(!confirm('匯入會取代目前所有資料，確定繼續？'))return;
-  for(const s of stores){await clearStore(s);for(const r of (p.data[s]||[]))await put(s,r)}await load();toast('備份已還原');
- }catch(err){alert('匯入失敗：'+err.message)}finally{e.target.value=''}
+ try{
+  const file=e.target.files?.[0];
+  if(!file)throw new Error('未選擇備份檔');
+  const text=await file.text();
+  const parsed=JSON.parse(text);
+  const normalized=normalizeBackup(parsed);
+  const counts=stores.map(s=>`${s}: ${normalized[s].length}`).join('
+');
+  if(!confirm(`即將匯入：
+${counts}
+
+這會取代目前資料，確定繼續？`))return;
+  await replaceAllData(normalized);
+  localStorage.setItem(MIRROR_KEY,JSON.stringify({version:APP_VERSION,data:normalized,at:new Date().toISOString()}));
+  await load();
+  toast('備份已成功還原');
+ }catch(err){
+  console.error(err);
+  alert('匯入失敗：'+(err?.message||String(err)));
+ }finally{
+  e.target.value='';
+ }
 };
 clearBtn.onclick=async()=>{if(confirm('這會清除目前瀏覽器中的全部投資資料，確定嗎？')){for(const s of stores)await clearStore(s);await load();toast('全部資料已清除')}};
 seedBtn.onclick=async()=>{if(state.assets.length&&!confirm('這會以 Willy 初始持股取代目前資料，確定嗎？'))return;const data=initialPortfolio();for(const k of stores){await clearStore(k);for(const r of data[k])await put(k,r)}await load();toast('Willy 初始持股已恢復');};
