@@ -7,6 +7,7 @@ const fmt=n=>new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maxi
 const num=n=>Number(n||0);
 const uid=()=>crypto.randomUUID();
 const today=()=>new Date().toISOString().slice(0,10);
+const nowLocal=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)};
 const labels={
   active:'持有中',closed:'已清倉',archived:'封存',
   cash:'現金入帳',reinvest:'股息再投入',record_only:'僅記錄',
@@ -59,7 +60,7 @@ function assetName(id){const a=state.assets.find(x=>x.id===id);return a?`${a.sym
 function accountName(id){return state.accounts.find(x=>x.id===id)?.name||'—'}
 function actionButtons(store,id){return `<div class="actions"><button class="mini" data-edit="${store}:${id}">編輯</button><button class="mini delete" data-delete="${store}:${id}">刪除</button></div>`}
 function renderAssets(){
- assetsTable.innerHTML=state.assets.map(a=>`<tr><td><strong>${a.symbol}</strong></td><td>${a.name}</td><td>${a.market}</td><td>${a.type}</td><td>${fmt(a.currentPrice)}</td><td>${labels[a.status]}</td><td>${actionButtons('assets',a.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">尚無資料</td></tr>';
+ assetsTable.innerHTML=state.assets.map(a=>`<tr><td><strong>${a.symbol}</strong></td><td>${a.name}</td><td>${a.market}</td><td>${a.type}</td><td>${fmt(a.currentPrice)}<div class="muted">${a.priceUpdatedAt?new Date(a.priceUpdatedAt).toLocaleString('zh-TW'):''}</div></td><td>${labels[a.status]}</td><td>${actionButtons('assets',a.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">尚無資料</td></tr>';
 }
 function renderAccounts(){
  accountsTable.innerHTML=state.accounts.map(a=>`<tr><td>${assetName(a.assetId)}</td><td>${a.name}</td><td>${labels[a.dividendMode]}</td><td>${a.note||''}</td><td>${actionButtons('accounts',a.id)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">尚無資料</td></tr>';
@@ -82,7 +83,7 @@ function renderDashboard(){
  assetCount.textContent=state.assets.filter(a=>a.status==='active').length;
  const cards=vals.filter(x=>x.asset.status!=='archived').map(x=>{
   const avg=x.qty?x.cost/x.qty:0,p=x.marketValue-x.cost;
-  return `<article class="asset-card"><header><div><h3>${x.asset.symbol}</h3><small>${x.asset.name}</small></div><strong>${fmt(x.asset.currentPrice)}</strong></header><div class="asset-stats"><div><span>持股</span><strong>${x.qty.toLocaleString()} 股</strong></div><div><span>平均成本</span><strong>${fmt(avg)}</strong></div><div><span>市值</span><strong>${fmt(x.marketValue)}</strong></div><div><span>損益</span><strong class="${p>=0?'positive':'negative'}">${fmt(p)}</strong></div></div></article>`;
+  return `<article class="asset-card"><header><div><h3>${x.asset.symbol}</h3><small>${x.asset.name}</small></div><div style="text-align:right"><span class="muted" style="display:block;font-size:.72rem">現價</span><strong>${fmt(x.asset.currentPrice)}</strong><small style="display:block">${x.asset.priceUpdatedAt?new Date(x.asset.priceUpdatedAt).toLocaleString('zh-TW'):''}</small></div></header><div class="asset-stats"><div><span>持股</span><strong>${x.qty.toLocaleString()} 股</strong></div><div><span>平均成本</span><strong>${fmt(avg)}</strong></div><div><span>市值</span><strong>${fmt(x.marketValue)}</strong></div><div><span>損益</span><strong class="${p>=0?'positive':'negative'}">${fmt(p)}</strong></div></div></article>`;
  }).join('');
  portfolioCards.classList.toggle('empty-state',!cards);portfolioCards.innerHTML=cards||'尚無投資標的';
 }
@@ -90,8 +91,12 @@ function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');setTim
 const toastEl=document.getElementById('toast');
 
 document.addEventListener('click',async e=>{
- const tab=e.target.closest('.tab'); if(tab){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));tab.classList.add('active');document.getElementById(tab.dataset.view).classList.add('active')}
- const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());renderSelects();d.showModal()}
+
+ const closeBtn=e.target.closest('[data-close-dialog]');if(closeBtn){closeBtn.closest('dialog')?.close()}
+ const mtab=e.target.closest('.mobile-tab');if(mtab){document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));mtab.classList.add('active');document.getElementById(mtab.dataset.view).classList.add('active')}
+
+ const tab=e.target.closest('.tab'); if(tab){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));tab.classList.add('active');document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.toggle('active',x.dataset.view===tab.dataset.view));document.getElementById(tab.dataset.view).classList.add('active')}
+ const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());const p=d.querySelector('[name=priceUpdatedAt]');if(p)p.value=nowLocal();renderSelects();d.showModal()}
  const ed=e.target.closest('[data-edit]');if(ed){const [store,id]=ed.dataset.edit.split(':');editRecord(store,id)}
  const de=e.target.closest('[data-delete]');if(de){const [store,id]=de.dataset.delete.split(':');if(confirm('確定刪除這筆資料？')){await del(store,id);await load();toast('已刪除')}}
 });
@@ -105,7 +110,7 @@ function editRecord(store,id){
 document.querySelectorAll('select[name=assetId]').forEach(s=>s.addEventListener('change',e=>{const f=e.target.closest('form');if(f?.elements.accountId)refreshAccountOptions(f.elements.accountId,e.target.value)}));
 
 function formObject(form){return Object.fromEntries(new FormData(form).entries())}
-assetForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();x.currentPrice=num(x.currentPrice);await put('assets',x);e.target.closest('dialog').close();await load();toast('標的已儲存')});
+assetForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();x.currentPrice=num(x.currentPrice);if(!x.priceUpdatedAt)x.priceUpdatedAt=nowLocal();await put('assets',x);e.target.closest('dialog').close();await load();toast('標的已儲存')});
 accountForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();await put('accounts',x);e.target.closest('dialog').close();await load();toast('持有來源已儲存')});
 transactionForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();['quantity','price','fee'].forEach(k=>x[k]=num(x[k]));await put('transactions',x);e.target.closest('dialog').close();await load();toast('交易已儲存')});
 dividendForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();['eligibleShares','perShare','netAmount'].forEach(k=>x[k]=num(x[k]));await put('dividends',x);e.target.closest('dialog').close();await load();toast('配息已儲存')});
@@ -124,8 +129,8 @@ importFile.onchange=async e=>{
 clearBtn.onclick=async()=>{if(confirm('這會清除目前瀏覽器中的全部投資資料，確定嗎？')){for(const s of stores)await clearStore(s);await load();toast('全部資料已清除')}};
 seedBtn.onclick=async()=>{
  if(state.assets.length&&!confirm('已有資料，仍要加入範例資料嗎？'))return;
- const a2421={id:uid(),symbol:'2421',name:'信錦',market:'台股',type:'個股',currentPrice:125,status:'active',note:''};
- const a0050={id:uid(),symbol:'0050',name:'元大台灣50',market:'台股',type:'ETF',currentPrice:0,status:'active',note:''};
+ const a2421={id:uid(),symbol:'2421',name:'信錦',market:'台股',type:'個股',currentPrice:125,priceUpdatedAt:nowLocal(),status:'active',note:''};
+ const a0050={id:uid(),symbol:'0050',name:'元大台灣50',market:'台股',type:'ETF',currentPrice:0,priceUpdatedAt:nowLocal(),status:'active',note:''};
  await put('assets',a2421);await put('assets',a0050);
  const personal={id:uid(),assetId:a2421.id,name:'個人持股',dividendMode:'cash',note:'配息實際現金入帳'};
  const trust={id:uid(),assetId:a2421.id,name:'員工福利信託',dividendMode:'reinvest',note:'股息留在信託並再投入'};

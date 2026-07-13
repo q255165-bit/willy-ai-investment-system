@@ -1,4 +1,4 @@
-# Willy AI Investment System｜V2.0
+# Willy AI Investment System｜V2.0.1
 
 免費、可長期使用的個人投資管理 PWA。
 
@@ -18,3 +18,11 @@ Repository → Settings → Pages → Deploy from a branch → main / root
 
 ## 重要
 投資資料只儲存在目前瀏覽器，不會上傳到 GitHub。請固定匯出 JSON 備份。
+
+## V2.0.1 更新
+- 修正新增視窗右上角 X 與取消按鈕無法關閉
+- 手機版改為固定底部五按鈕導覽
+- 縮小手機版新增按鈕
+- 標的卡片與清單清楚顯示現價
+- 新增現價更新時間
+- 修正 PWA 圖示與離線快取路徑
