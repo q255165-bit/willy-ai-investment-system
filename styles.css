@@ -46,3 +46,12 @@ dialog form{padding:20px}.dialog-head{display:flex;justify-content:space-between
 .price-row input{width:100%;background:#111827;border:1px solid #334155;color:#e5e7eb;border-radius:10px;padding:10px;text-align:right}
 .inline-price-btn{margin-top:10px;width:100%}
 @media(max-width:600px){.head-actions{flex-direction:column}.head-actions>*{width:100%}}
+
+.reinvest-fields{display:none;background:#0f172a;border:1px solid #334155;border-radius:12px;padding:14px}
+.reinvest-fields.show{display:block}
+.reinvest-fields h4{margin:0 0 12px}
+.nested-grid{margin-top:0}
+.check-label{display:flex!important;align-items:center;gap:8px;margin-top:22px}
+.check-label input{width:auto!important;margin:0!important}
+.field-help{color:#94a3b8;font-size:.78rem;margin:10px 0 0}
+.version-note{font-size:.72rem;color:#93c5fd}

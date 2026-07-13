@@ -14,7 +14,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-      <h1>投資管理中心 <span>V2.0</span></h1>
+      <h1>投資管理中心 <span>V2.2.0</span></h1>
     </div>
     <button id="installBtn" class="ghost hidden">安裝 App</button>
   </header>
@@ -148,6 +148,18 @@
       <label>適用股數<input name="eligibleShares" type="number" step="0.0001" min="0" required /></label>
       <label>每股股利<input name="perShare" type="number" step="0.0001" min="0" required /></label>
       <label>實收／再投入金額<input name="netAmount" type="number" step="0.01" min="0" required /></label>
+      <div class="full reinvest-fields" data-reinvest-fields>
+        <h4>再投入明細</h4>
+        <div class="form-grid nested-grid">
+          <label>再投入標的<select name="reinvestAssetId"></select></label>
+          <label>再投入日期<input name="reinvestDate" type="date" /></label>
+          <label>再投入成交價<input name="reinvestPrice" type="number" step="0.0001" min="0" /></label>
+          <label>新增股數<input name="reinvestQuantity" type="number" step="0.0001" min="0" /></label>
+          <label>剩餘現金<input name="residualCash" type="number" step="0.01" min="0" value="0" /></label>
+          <label class="check-label"><input name="createReinvestTransaction" type="checkbox" checked /> 同步建立再投入交易</label>
+        </div>
+        <p class="field-help">員工信託再投入時，股息列入「再投入股息」，並由再投入交易增加該持有來源的股數，不列入可動用現金。</p>
+      </div>
       <label class="full">備註<textarea name="note"></textarea></label>
     </div>
     <div class="dialog-actions"><button type="button" class="ghost" data-close-dialog>取消</button><button value="default" class="primary">儲存</button></div>

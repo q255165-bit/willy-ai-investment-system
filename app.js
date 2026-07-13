@@ -1,4 +1,5 @@
 
+const APP_VERSION='2.2.0';
 const DB_NAME='willy-investment-v2', DB_VERSION=1;
 const stores=['assets','accounts','transactions','dividends'];
 let db, deferredPrompt;
@@ -28,7 +29,19 @@ function del(store,id){return new Promise((res,rej)=>{const r=db.transaction(sto
 function clearStore(store){return new Promise((res,rej)=>{const r=db.transaction(store,'readwrite').objectStore(store).clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
 
 let state={assets:[],accounts:[],transactions:[],dividends:[]};
-async function load(){for(const s of stores)state[s]=await all(s);render()}
+async function migrateData(){
+ let changed=false;
+ for(const a of state.assets){
+   if(a.symbol==='2421' && a.name==='信錦'){a.name='建準';await put('assets',a);changed=true}
+ }
+ return changed;
+}
+async function load(){
+ for(const s of stores)state[s]=await all(s);
+ const changed=await migrateData();
+ if(changed)for(const s of stores)state[s]=await all(s);
+ render();
+}
 
 function holdings(){
  const map={};
@@ -48,11 +61,25 @@ function render(){
  renderSelects(); renderAssets(); renderAccounts(); renderTransactions(); renderDividends(); renderDashboard();
 }
 function renderSelects(){
- document.querySelectorAll('select[name=assetId]').forEach(sel=>{
+ document.querySelectorAll('select[name=assetId],select[name=reinvestAssetId]').forEach(sel=>{
   const v=sel.value; sel.innerHTML='<option value="">請選擇</option>'+state.assets.filter(a=>a.status!=='archived').map(a=>`<option value="${a.id}">${a.symbol} ${a.name}</option>`).join('');sel.value=v;
  });
  document.querySelectorAll('select[name=accountId]').forEach(sel=>refreshAccountOptions(sel));
 }
+
+function toggleReinvestFields(form){
+ const show=form?.elements?.mode?.value==='reinvest';
+ const box=form?.querySelector('[data-reinvest-fields]');
+ if(box)box.classList.toggle('show',show);
+}
+function applyDividendAccountDefaults(form){
+ const account=state.accounts.find(a=>a.id===form.elements.accountId.value);
+ if(account && !form.elements.id.value){
+   form.elements.mode.value=account.dividendMode||'cash';
+   toggleReinvestFields(form);
+ }
+}
+
 function refreshAccountOptions(sel,assetId){
  const v=sel.value; const aid=assetId||sel.closest('form')?.querySelector('[name=assetId]')?.value;
  sel.innerHTML='<option value="">請選擇</option>'+state.accounts.filter(a=>!aid||a.assetId===aid).map(a=>`<option value="${a.id}">${a.name}</option>`).join('');sel.value=v;
@@ -72,7 +99,7 @@ function renderTransactions(){
 }
 function renderDividends(){
  const rows=[...state.dividends].sort((a,b)=>b.date.localeCompare(a.date));
- dividendsTable.innerHTML=rows.map(d=>`<tr><td>${d.date}</td><td>${assetName(d.assetId)}</td><td>${accountName(d.accountId)}</td><td>${labels[d.mode]}</td><td>${num(d.eligibleShares).toLocaleString()}</td><td>${num(d.perShare).toLocaleString()}</td><td>${fmt(d.netAmount)}</td><td>${actionButtons('dividends',d.id)}</td></tr>`).join('')||'<tr><td colspan="8" class="muted">尚無資料</td></tr>';
+ dividendsTable.innerHTML=rows.map(d=>`<tr><td>${d.date}</td><td>${assetName(d.assetId)}</td><td>${accountName(d.accountId)}</td><td>${labels[d.mode]}${d.mode==='reinvest'&&d.reinvestQuantity?`<div class="muted">+${num(d.reinvestQuantity).toLocaleString()} 股 → ${assetName(d.reinvestAssetId||d.assetId)}</div>`:''}</td><td>${num(d.eligibleShares).toLocaleString()}</td><td>${fmtPrice(d.perShare)}</td><td>${fmt(d.netAmount)}${d.mode==='reinvest'&&num(d.residualCash)>0?`<div class="muted">餘額 ${fmt(d.residualCash)}</div>`:''}</td><td>${actionButtons('dividends',d.id)}</td></tr>`).join('')||'<tr><td colspan="8" class="muted">尚無資料</td></tr>';
 }
 function renderDashboard(){
  const h=holdings(), vals=Object.values(h);
@@ -97,20 +124,28 @@ document.addEventListener('click',async e=>{
  const mtab=e.target.closest('.mobile-tab');if(mtab){document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));mtab.classList.add('active');document.getElementById(mtab.dataset.view).classList.add('active')}
 
  const tab=e.target.closest('.tab'); if(tab){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));tab.classList.add('active');document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.toggle('active',x.dataset.view===tab.dataset.view));document.getElementById(tab.dataset.view).classList.add('active')}
- const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());const p=d.querySelector('[name=priceUpdatedAt]');if(p)p.value=nowLocal();renderSelects();if(d.id==='priceCenterDialog')renderPriceCenter();d.showModal()}
+ const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());const p=d.querySelector('[name=priceUpdatedAt]');if(p)p.value=nowLocal();renderSelects();if(d.id==='priceCenterDialog')renderPriceCenter();if(d.id==='dividendDialog'){toggleReinvestFields(d.querySelector('form'));}d.showModal()}
 
  const pe=e.target.closest('[data-price-edit]');if(pe){const a=state.assets.find(x=>x.id===pe.dataset.priceEdit);const v=prompt(`${a.symbol} ${a.name}\n請輸入最新現價：`,a.currentPrice||'');if(v!==null&&v!==''){const n=Number(v);if(Number.isFinite(n)&&n>=0){a.currentPrice=n;a.priceUpdatedAt=nowLocal();await put('assets',a);await load();toast('現價已更新')}else alert('請輸入有效價格')}}
 
  const ed=e.target.closest('[data-edit]');if(ed){const [store,id]=ed.dataset.edit.split(':');editRecord(store,id)}
- const de=e.target.closest('[data-delete]');if(de){const [store,id]=de.dataset.delete.split(':');if(confirm('確定刪除這筆資料？')){await del(store,id);await load();toast('已刪除')}}
+ const de=e.target.closest('[data-delete]');if(de){const [store,id]=de.dataset.delete.split(':');if(confirm('確定刪除這筆資料？')){
+   if(store==='dividends'){const d=state.dividends.find(x=>x.id===id);if(d?.linkedTransactionId)await del('transactions',d.linkedTransactionId)}
+   await del(store,id);await load();toast('已刪除')
+ }}
 });
 function editRecord(store,id){
  const record=state[store].find(x=>x.id===id), map={assets:'assetDialog',accounts:'accountDialog',transactions:'transactionDialog',dividends:'dividendDialog'};
  const d=document.getElementById(map[store]), f=d.querySelector('form');f.reset();
  Object.entries(record).forEach(([k,v])=>{if(f.elements[k])f.elements[k].value=v});
  if(store==='transactions'||store==='dividends')refreshAccountOptions(f.elements.accountId,record.assetId);
+ if(store==='dividends')toggleReinvestFields(f);
  d.showModal();
 }
+
+dividendForm.elements.mode.addEventListener('change',()=>toggleReinvestFields(dividendForm));
+dividendForm.elements.accountId.addEventListener('change',()=>applyDividendAccountDefaults(dividendForm));
+
 document.querySelectorAll('select[name=assetId]').forEach(s=>s.addEventListener('change',e=>{const f=e.target.closest('form');if(f?.elements.accountId)refreshAccountOptions(f.elements.accountId,e.target.value)}));
 
 
@@ -128,10 +163,50 @@ function formObject(form){return Object.fromEntries(new FormData(form).entries()
 assetForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();x.currentPrice=num(x.currentPrice);if(!x.priceUpdatedAt)x.priceUpdatedAt=nowLocal();await put('assets',x);e.target.closest('dialog').close();await load();toast('標的已儲存')});
 accountForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();await put('accounts',x);e.target.closest('dialog').close();await load();toast('持有來源已儲存')});
 transactionForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();['quantity','price','fee'].forEach(k=>x[k]=num(x[k]));await put('transactions',x);e.target.closest('dialog').close();await load();toast('交易已儲存')});
-dividendForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();['eligibleShares','perShare','netAmount'].forEach(k=>x[k]=num(x[k]));await put('dividends',x);e.target.closest('dialog').close();await load();toast('配息已儲存')});
+dividendForm.addEventListener('submit',async e=>{
+ e.preventDefault();
+ const x=formObject(e.target);
+ x.id=x.id||uid();
+ ['eligibleShares','perShare','netAmount','reinvestPrice','reinvestQuantity','residualCash'].forEach(k=>x[k]=num(x[k]));
+ x.createReinvestTransaction=e.target.elements.createReinvestTransaction?.checked||false;
+ const old=state.dividends.find(d=>d.id===x.id);
+ if(old?.linkedTransactionId && (!x.createReinvestTransaction || x.mode!=='reinvest')){
+   await del('transactions',old.linkedTransactionId);
+   x.linkedTransactionId='';
+ }
+ if(x.mode==='reinvest' && x.createReinvestTransaction && x.reinvestQuantity>0){
+   const sourceAccount=state.accounts.find(a=>a.id===x.accountId);
+   let targetAccountId=x.accountId;
+   if(x.reinvestAssetId && x.reinvestAssetId!==x.assetId){
+     const match=state.accounts.find(a=>a.assetId===x.reinvestAssetId && a.name===sourceAccount?.name);
+     if(match)targetAccountId=match.id;
+     else{
+       const newAccount={id:uid(),assetId:x.reinvestAssetId,name:sourceAccount?.name||'股息再投入',dividendMode:'cash',note:'由股息再投入自動建立'};
+       await put('accounts',newAccount);targetAccountId=newAccount.id;
+     }
+   }
+   const tx={
+     id:old?.linkedTransactionId||uid(),
+     assetId:x.reinvestAssetId||x.assetId,
+     accountId:targetAccountId,
+     type:'reinvest',
+     date:x.reinvestDate||x.date,
+     quantity:x.reinvestQuantity,
+     price:x.reinvestPrice,
+     fee:0,
+     note:`由 ${assetName(x.assetId)} 配息再投入`
+   };
+   await put('transactions',tx);
+   x.linkedTransactionId=tx.id;
+ }
+ await put('dividends',x);
+ e.target.closest('dialog').close();
+ await load();
+ toast(x.mode==='reinvest'?'再投入配息已儲存':'配息已儲存');
+});
 
 exportBtn.onclick=async()=>{
- const payload={app:'Willy AI Investment System',version:'2.0',exportedAt:new Date().toISOString(),data:state};
+ const payload={app:'Willy AI Investment System',version:APP_VERSION,exportedAt:new Date().toISOString(),data:state};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');
  a.href=URL.createObjectURL(blob);a.download=`Willy-Investment-Backup-${today()}.json`;a.click();URL.revokeObjectURL(a.href);
 };
@@ -144,7 +219,7 @@ importFile.onchange=async e=>{
 clearBtn.onclick=async()=>{if(confirm('這會清除目前瀏覽器中的全部投資資料，確定嗎？')){for(const s of stores)await clearStore(s);await load();toast('全部資料已清除')}};
 seedBtn.onclick=async()=>{
  if(state.assets.length&&!confirm('已有資料，仍要加入範例資料嗎？'))return;
- const a2421={id:uid(),symbol:'2421',name:'信錦',market:'台股',type:'個股',currentPrice:125,priceUpdatedAt:nowLocal(),status:'active',note:''};
+ const a2421={id:uid(),symbol:'2421',name:'建準',market:'台股',type:'個股',currentPrice:125,priceUpdatedAt:nowLocal(),status:'active',note:''};
  const a0050={id:uid(),symbol:'0050',name:'元大台灣50',market:'台股',type:'ETF',currentPrice:0,priceUpdatedAt:nowLocal(),status:'active',note:''};
  await put('assets',a2421);await put('assets',a0050);
  const personal={id:uid(),assetId:a2421.id,name:'個人持股',dividendMode:'cash',note:'配息實際現金入帳'};
