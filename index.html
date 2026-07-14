@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
-  <title>WAIS V3.3.0 Stable</title>
+  <title>WAIS V3.4.0 Stable</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
 <header class="topbar">
   <div>
     <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-    <h1>投資管理中心 <span>V3.3.0 Stable</span></h1>
+    <h1>投資管理中心 <span>V3.4.0 Stable</span></h1>
   </div>
 </header>
 
@@ -23,13 +23,13 @@
     <article class="metric"><span>參考損益</span><strong id="sumPnl">NT$0</strong></article>
     <article class="metric"><span>現金股息</span><strong id="sumCashDiv">NT$0</strong></article>
     <article class="metric"><span>再投入股息</span><strong id="sumReinvestDiv">NT$0</strong></article>
-    <article class="metric"><span>標的數</span><strong id="sumAssets">0</strong></article>
+    <article class="metric"><span>海外資產</span><strong id="sumForeign">NT$0</strong></article>
   </section>
 
   <nav class="tabs">
     <button class="tab active" data-view="home">首頁</button>
     <button class="tab" data-view="holdings">一般持股</button>
-    <button class="tab" data-view="trust">員工信託</button>
+    <button class="tab" data-view="trust">員工信託</button><button class="tab" data-view="foreign">海外／基金</button>
     <button class="tab" data-view="dividends">配息</button>
     <button class="tab" data-view="backup">更多</button>
   </nav>
@@ -42,7 +42,7 @@
       </div>
       <div id="homeCards" class="card-grid"></div>
     </div>
-  </section>
+  <div class="panel allocation-panel"><div class="panel-head"><div><h2>資產配置</h2><p>全部換算為新台幣後計算占比。</p></div></div><div class="allocation-wrap"><div id="allocationPie" class="allocation-pie"><div class="pie-center"><strong id="allocationTotal">NT$0</strong><span>總資產</span></div></div><div id="allocationLegend" class="allocation-legend"></div></div></div></section>
 
   <section id="holdings" class="view">
     <div class="panel">
@@ -77,7 +77,7 @@
     </div>
   </section>
 
-  <section id="dividends" class="view">
+  <section id="foreign" class="view"><div class="panel"><div class="panel-head"><div><h2>海外／基金</h2><p>原始資料以美元管理，首頁自動換算新台幣。</p></div><button class="primary" data-open="foreignDialog">＋新增海外資產</button></div><div class="fx-banner"><div><span>USD/TWD 匯率</span><strong id="fxRateDisplay">—</strong></div><div><span>更新時間</span><strong id="fxUpdatedDisplay">—</strong></div><button class="ghost" data-open="settingsDialog">更新匯率</button></div><div id="foreignCards" class="card-grid"></div></div></section><section id="dividends" class="view">
     <div class="panel">
       <div class="panel-head">
         <div><h2>配息紀錄</h2><p>配息紀錄只做紀錄，不再自動改動主持股。</p></div>
@@ -95,11 +95,11 @@
   <section id="backup" class="view">
     <div class="panel backup-panel">
       <h2>資料備份與還原</h2>
-      <p>V3.3.0 改用單一 localStorage 資料檔，避免 IndexedDB 結構升級造成異常。</p>
+      <p>V3.4.0 支援美元資產、匯率與現金納入總資產。</p>
       <div class="backup-actions">
         <button id="exportBtn" class="primary">匯出 JSON</button>
         <label class="file-button">匯入 JSON<input id="importFile" type="file" accept=".json,application/json"></label>
-        <button id="restoreDefaultBtn" class="ghost">恢復 Willy 初始資料</button>
+        <button class="ghost" data-open="settingsDialog">匯率與現金設定</button><button id="restoreDefaultBtn" class="ghost">恢復 Willy 初始資料</button>
         <button id="clearBtn" class="danger">清除全部資料</button>
       </div>
       <div class="notice"><strong>建議：</strong>每次大量修改前先匯出 JSON，並另存至 Google Drive。</div>
@@ -110,7 +110,7 @@
 <nav class="mobile-nav">
   <button class="mobile-tab active" data-view="home">首頁</button>
   <button class="mobile-tab" data-view="holdings">持股</button>
-  <button class="mobile-tab" data-view="trust">信託</button>
+  <button class="mobile-tab" data-view="trust">信託</button><button class="mobile-tab" data-view="foreign">海外</button>
   <button class="mobile-tab" data-view="dividends">配息</button>
   <button class="mobile-tab" data-view="backup">更多</button>
 </nav>
@@ -153,7 +153,7 @@
 </form>
 </dialog>
 
-<dialog id="dividendDialog">
+<dialog id="foreignDialog"><form id="foreignForm"><div class="dialog-head"><h3>海外／基金資料</h3><button type="button" class="icon" data-close>×</button></div><input type="hidden" name="id"><div class="form-grid"><label>代碼<input name="symbol" required></label><label>名稱<input name="name" required></label><label>資產類型<select name="type"><option>債券基金</option><option>股票基金</option><option>海外個股</option><option>其他</option></select></label><label>幣別<select name="currency"><option value="USD">USD</option></select></label><label>持有單位<input name="units" type="number" step="0.0001" min="0" required></label><label>總投入成本（USD）<input name="totalCostOriginal" type="number" step="0.01" min="0" required></label><label>目前淨值／價格（USD）<input name="currentPriceOriginal" type="number" step="0.0001" min="0"></label><label>成本均價（USD）<input name="averageCostOriginal" type="number" step="0.0001" min="0"></label><label>累積配息（USD）<input name="cumulativeDividendsOriginal" type="number" step="0.01" min="0" value="0"></label><label>價格更新時間<input name="priceUpdatedAt" type="datetime-local"></label><label class="full">備註<textarea name="note"></textarea></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存</button></div></form></dialog><dialog id="settingsDialog"><form id="settingsForm"><div class="dialog-head"><h3>匯率與現金設定</h3><button type="button" class="icon" data-close>×</button></div><div class="form-grid"><label>USD/TWD 匯率<input name="usdTwd" type="number" step="0.0001" min="0" required></label><label>匯率更新時間<input name="fxUpdatedAt" type="datetime-local"></label><label>新台幣現金<input name="twdCash" type="number" step="0.01" min="0" value="0"></label><label>美元現金<input name="usdCash" type="number" step="0.01" min="0" value="0"></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存</button></div></form></dialog><dialog id="dividendDialog">
 <form id="dividendForm">
   <div class="dialog-head"><h3>配息紀錄</h3><button type="button" class="icon" data-close>×</button></div>
   <input type="hidden" name="id">
