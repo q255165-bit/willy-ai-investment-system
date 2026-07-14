@@ -1,406 +1,188 @@
 
-const APP_VERSION='3.2.1';
-const DB_NAME='willy-investment-v3', DB_VERSION=1;
-const stores=['assets','accounts','transactions','dividends','trustSnapshots'];
-const MIRROR_KEY='wais-v3-mirror';
-let db, deferredPrompt;
+const APP_VERSION='3.3.0';
+const KEY='wais-v3.3-data';
 
-const fmt=n=>new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(Number(n||0));
-const fmtPrice=n=>new Intl.NumberFormat('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:4}).format(Number(n||0));
-const num=n=>Number(n||0);
-const uid=()=>crypto.randomUUID();
-const today=()=>new Date().toISOString().slice(0,10);
-const nowLocal=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)};
-const labels={
-  active:'持有中',closed:'已清倉',archived:'封存',
-  cash:'現金入帳',reinvest:'股息再投入',record_only:'僅記錄',
-  initial:'初始持股',buy:'買進',sell:'賣出',stock_dividend:'股票股利',adjustment:'股數調整'
-};
+const defaultData=()=>({
+ version:APP_VERSION,
+ holdings:[
+  {id:crypto.randomUUID(),symbol:'0050',name:'元大台灣50',type:'ETF',shares:29050,totalCost:2302878,averageCost:79.27,currentPrice:106,priceUpdatedAt:'',note:'核心長期持有'},
+  {id:crypto.randomUUID(),symbol:'00997A',name:'主動群益美國增長',type:'主動式ETF',shares:40000,totalCost:408968,averageCost:10.22,currentPrice:12.07,priceUpdatedAt:'',note:'成長型部位'},
+  {id:crypto.randomUUID(),symbol:'00400A',name:'主動國泰動能高息',type:'主動式ETF',shares:10000,totalCost:98800,averageCost:9.88,currentPrice:14.1,priceUpdatedAt:'',note:'配息用途'},
+  {id:crypto.randomUUID(),symbol:'2421',name:'建準（一般持股）',type:'個股',shares:2031,totalCost:253875,averageCost:125,currentPrice:138,priceUpdatedAt:'',note:'不含員工福利信託'}
+ ],
+ trustSnapshots:[
+  {id:crypto.randomUUID(),date:'2026-07-14',kind:'self',shares:519.5,marketValue:71760,cash:117,principal:57000,fees:0,dividendReinvest:'',note:'依信託平台畫面'},
+  {id:crypto.randomUUID(),date:'2026-07-14',kind:'company',shares:519.5,marketValue:71622,cash:259,principal:57000,fees:0,dividendReinvest:'',note:'依信託平台畫面'}
+ ],
+ dividends:[]
+});
 
+let data=loadData();
 
-function initialPortfolio(){
- const mk=()=>uid(),assets=[],accounts=[],transactions=[],dividends=[];
- const addA=(symbol,name,type,currentPrice,note)=>{const id=mk();assets.push({id,symbol,name,market:'台股',type,currentPrice,priceUpdatedAt:currentPrice?nowLocal():'',status:'active',note});return id};
- const addC=(assetId,name,dividendMode,note)=>{const id=mk();accounts.push({id,assetId,name,dividendMode,note});return id};
- const addT=(assetId,accountId,quantity,price,totalCost,note)=>transactions.push({id:mk(),assetId,accountId,type:'initial',date:'2026-07-13',quantity,price,fee:0,totalCost,note});
- let a=addA('0050','元大台灣50','ETF',0,'核心長期持有'),c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,29050,79.27,2302878,'初始持股');
- a=addA('00997A','主動群益美國增長','主動式ETF',0,'成長型部位');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,40000,10.22,408968,'初始持股');
- a=addA('00400A','主動國泰動能高息','主動式ETF',14.10,'配息用途');c=addC(a,'個人持股','cash','一般證券帳戶');addT(a,c,10000,9.88,98800,'初始持股');
- a=addA('2421','建準','個股',138,'個人與員工福利信託分開管理');
- const p=addC(a,'個人持股','cash','配息實際現金入帳'),t=addC(a,'員工福利信託','reinvest','股息留在信託並再投入');
- addT(a,p,2031,125,253875,'個人持股初始匯入');addT(a,t,970,106.81,103606,'員工福利信託初始匯入');
- return {assets,accounts,transactions,dividends,trustSnapshots:[]};
-}
-function saveMirror(){
- try{localStorage.setItem(MIRROR_KEY,JSON.stringify({version:APP_VERSION,data:state,at:new Date().toISOString()}))}catch(e){}
-}
-function readMirror(){
- try{const x=localStorage.getItem(MIRROR_KEY);return x?JSON.parse(x):null}catch(e){return null}
-}
-
-function openDB(){
- return new Promise((resolve,reject)=>{
-  const req=indexedDB.open(DB_NAME,DB_VERSION);
-  req.onupgradeneeded=e=>{
-   const d=e.target.result;
-   stores.forEach(s=>{
-    if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'});
-   });
+function loadData(){
+ try{
+  const raw=localStorage.getItem(KEY);
+  if(!raw)return defaultData();
+  const p=JSON.parse(raw);
+  return {
+   version:APP_VERSION,
+   holdings:Array.isArray(p.holdings)?p.holdings:[],
+   trustSnapshots:Array.isArray(p.trustSnapshots)?p.trustSnapshots:[],
+   dividends:Array.isArray(p.dividends)?p.dividends:[]
   };
-  req.onsuccess=e=>{
-   const d=e.target.result;
-   const missing=stores.filter(s=>!d.objectStoreNames.contains(s));
-   if(missing.length){
-    const nextVersion=d.version+1;
-    d.close();
-    const retry=indexedDB.open(DB_NAME,nextVersion);
-    retry.onupgradeneeded=ev=>{
-     const db2=ev.target.result;
-     stores.forEach(s=>{
-      if(!db2.objectStoreNames.contains(s))db2.createObjectStore(s,{keyPath:'id'});
-     });
-    };
-    retry.onsuccess=ev=>resolve(ev.target.result);
-    retry.onerror=()=>reject(retry.error);
-   }else resolve(d);
-  };
-  req.onerror=()=>reject(req.error);
- });
-}
-function all(store){return new Promise((res,rej)=>{const r=db.transaction(store).objectStore(store).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-function put(store,value){return new Promise((res,rej)=>{const r=db.transaction(store,'readwrite').objectStore(store).put(value);r.onsuccess=()=>res(value);r.onerror=()=>rej(r.error)})}
-function del(store,id){return new Promise((res,rej)=>{const r=db.transaction(store,'readwrite').objectStore(store).delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-function clearStore(store){return new Promise((res,rej)=>{const r=db.transaction(store,'readwrite').objectStore(store).clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-
-let state={assets:[],accounts:[],transactions:[],dividends:[],trustSnapshots:[]};
-async function migrateData(){
- let changed=false;
- for(const a of state.assets){
-
-   if(a.symbol==='00400A' && a.name!=='主動國泰動能高息'){a.name='主動國泰動能高息';await put('assets',a);changed=true}
-   if(a.symbol==='00997A' && a.name!=='主動群益美國增長'){a.name='主動群益美國增長';await put('assets',a);changed=true}
-
-   if(a.symbol==='2421' && a.name!=='建準'){a.name='建準';await put('assets',a);changed=true}
+ }catch(e){
+  console.error(e);return defaultData();
  }
- for(const t of state.transactions){
-   if(t.type!=='initial')continue;
-   const a=state.assets.find(x=>x.id===t.assetId);
-   const acc=state.accounts.find(x=>x.id===t.accountId);
-   let exact=0;
-   if(a?.symbol==='0050' && num(t.quantity)===29050)exact=2302878;
-   if(a?.symbol==='00997A' && num(t.quantity)===40000)exact=408968;
-   if(a?.symbol==='00400A' && num(t.quantity)===10000)exact=98800;
-   if(a?.symbol==='2421' && acc?.name==='個人持股' && num(t.quantity)===2031)exact=253875;
-   if(a?.symbol==='2421' && acc?.name==='員工福利信託' && num(t.quantity)===970)exact=103606;
-   if(exact && num(t.totalCost)!==exact){t.totalCost=exact;await put('transactions',t);changed=true}
- }
- return changed;
 }
-async function load(){
- for(const s of stores)state[s]=await all(s);
- const total=stores.reduce((n,k)=>n+state[k].length,0);
- if(total===0&&!window.__waisSkipAutoRestore){const m=readMirror();if(m?.data){for(const k of stores){await clearStore(k);for(const r of (m.data[k]||[]))await put(k,r)}for(const k of stores)state[k]=await all(k);}}
- const changed=await migrateData();
- if(changed)for(const s of stores)state[s]=await all(s);
- render();
- saveMirror();
-}
+function saveData(){localStorage.setItem(KEY,JSON.stringify(data));}
+function uid(){return crypto.randomUUID()}
+function n(v){return Number(v||0)}
+function money(v){return new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(n(v))}
+function price(v){return new Intl.NumberFormat('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:4}).format(n(v))}
+function today(){return new Date().toISOString().slice(0,10)}
+function nowLocal(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)}
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)}
 
-function holdings(){
- const map={};
- state.assets.forEach(a=>map[a.id]={asset:a,qty:0,cost:0,marketValue:0,accounts:{}});
- const txs=[...state.transactions].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
- txs.forEach(t=>{
-  const h=map[t.assetId];if(!h)return;
-  const q=num(t.quantity),fee=num(t.fee),exact=num(t.totalCost);
-  const ac=h.accounts[t.accountId]||{qty:0,cost:0};
-  if(['initial','buy','reinvest','stock_dividend','adjustment'].includes(t.type)){
-    const addedCost=t.type==='stock_dividend'||t.type==='adjustment'?0:(exact>0?exact:q*num(t.price)+fee);
-    h.qty+=q;h.cost+=addedCost;ac.qty+=q;ac.cost+=addedCost;
-  }else if(t.type==='sell'){
-    const avg=h.qty>0?h.cost/h.qty:0;
-    const acAvg=ac.qty>0?ac.cost/ac.qty:avg;
-    h.cost=Math.max(0,h.cost-avg*q);
-    h.qty=Math.max(0,h.qty-q);
-    ac.cost=Math.max(0,ac.cost-acAvg*q);
-    ac.qty=Math.max(0,ac.qty-q);
-  }
-  h.accounts[t.accountId]=ac;
- });
- Object.values(map).forEach(x=>x.marketValue=x.qty*num(x.asset.currentPrice));
- return map;
+function latestTrust(kind){
+ const rows=data.trustSnapshots.filter(x=>x.kind===kind).sort((a,b)=>b.date.localeCompare(a.date));
+ return rows[0]||null;
 }
-
-function trustSnapshotsSorted(){
- return [...state.trustSnapshots].sort((a,b)=>(a.month||'').localeCompare(b.month||''));
+function trustCalc(row){
+ if(!row)return {shares:0,marketValue:0,cash:0,principal:0,fees:0,currentValue:0,pnl:0,returnRate:0,stockCost:0,avgCost:0};
+ const currentValue=n(row.marketValue)+n(row.cash);
+ const pnl=currentValue-n(row.principal)-n(row.fees);
+ const returnRate=n(row.principal)?pnl/n(row.principal)*100:0;
+ const stockCost=Math.max(0,n(row.principal)-n(row.cash));
+ const avgCost=n(row.shares)?stockCost/n(row.shares):0;
+ return {...row,currentValue,pnl,returnRate,stockCost,avgCost};
 }
-function previousTrustSnapshot(current){
- const rows=trustSnapshotsSorted().filter(x=>x.assetId===current.assetId&&x.accountId===current.accountId&&x.month<current.month);
- return rows.length?rows[rows.length-1]:null;
+function combinedTrust(){
+ const a=trustCalc(latestTrust('self')),b=trustCalc(latestTrust('company'));
+ const shares=a.shares+b.shares,marketValue=a.marketValue+b.marketValue,cash=a.cash+b.cash,principal=a.principal+b.principal,fees=a.fees+b.fees;
+ const currentValue=marketValue+cash,pnl=currentValue-principal-fees,returnRate=principal?pnl/principal*100:0,stockCost=Math.max(0,principal-cash),avgCost=shares?stockCost/shares:0;
+ return {shares,marketValue,cash,principal,fees,currentValue,pnl,returnRate,stockCost,avgCost};
 }
-function trustDelta(row){
- const prev=previousTrustSnapshot(row);
- return prev?num(row.endingShares)-num(prev.endingShares):0;
-}
-function trustTotalCost(row){
- if(num(row.totalCost)>0)return num(row.totalCost);
- if(num(row.averageCost)>0)return num(row.endingShares)*num(row.averageCost);
- return 0;
-}
-function confidenceLabel(v){
- return v==='official'?'官方':v==='partial'?'部分已知':'推估';
-}
-
 function render(){
- renderSelects(); renderAssets(); renderAccounts(); renderTransactions(); renderDividends(); renderDashboard(); renderTrust();
+ renderSummary();renderHoldings();renderTrust();renderDividends();fillAssetSelect();
 }
-function renderSelects(){
- document.querySelectorAll('select[name=assetId],select[name=reinvestAssetId]').forEach(sel=>{
-  const v=sel.value; sel.innerHTML='<option value="">請選擇</option>'+state.assets.filter(a=>a.status!=='archived').map(a=>`<option value="${a.id}">${a.symbol} ${a.name}</option>`).join('');sel.value=v;
- });
- document.querySelectorAll('select[name=accountId]').forEach(sel=>refreshAccountOptions(sel));
+function renderSummary(){
+ const holdingMarket=data.holdings.reduce((s,x)=>s+n(x.shares)*n(x.currentPrice),0);
+ const holdingCost=data.holdings.reduce((s,x)=>s+n(x.totalCost),0);
+ const trust=combinedTrust();
+ const totalMarket=holdingMarket+trust.currentValue,totalCost=holdingCost+trust.principal,pnl=totalMarket-totalCost;
+ sumMarket.textContent=money(totalMarket);sumCost.textContent=money(totalCost);sumPnl.textContent=money(pnl);sumPnl.className=pnl>=0?'positive':'negative';
+ sumCashDiv.textContent=money(data.dividends.filter(x=>x.mode==='cash').reduce((s,x)=>s+n(x.amount),0));
+ sumReinvestDiv.textContent=money(data.dividends.filter(x=>x.mode==='reinvest').reduce((s,x)=>s+n(x.amount),0));
+ sumAssets.textContent=data.holdings.length;
 }
-
-function toggleReinvestFields(form){
- const show=form?.elements?.mode?.value==='reinvest';
- const box=form?.querySelector('[data-reinvest-fields]');
- if(box)box.classList.toggle('show',show);
+function holdingCard(x){
+ const market=n(x.shares)*n(x.currentPrice),pnl=market-n(x.totalCost),avg=n(x.averageCost)|| (n(x.shares)?n(x.totalCost)/n(x.shares):0);
+ return `<article class="asset-card">
+  <header><div><h3>${x.symbol}</h3><small>${x.name}</small></div><strong>NT$ ${price(x.currentPrice)}</strong></header>
+  <div class="asset-stats">
+   <div><span>持股</span><strong>${n(x.shares).toLocaleString()} 股</strong></div>
+   <div><span>成本均價</span><strong>NT$ ${price(avg)}</strong></div>
+   <div><span>總投入成本</span><strong>${money(x.totalCost)}</strong></div>
+   <div><span>市值</span><strong>${money(market)}</strong></div>
+   <div><span>參考損益</span><strong class="${pnl>=0?'positive':'negative'}">${money(pnl)}</strong></div>
+   <div><span>更新時間</span><strong>${x.priceUpdatedAt?new Date(x.priceUpdatedAt).toLocaleString('zh-TW'):'—'}</strong></div>
+  </div>
+  <div class="card-actions"><button class="mini" data-edit-holding="${x.id}">編輯</button><button class="mini delete" data-delete-holding="${x.id}">刪除</button></div>
+ </article>`;
 }
-function applyDividendAccountDefaults(form){
- const account=state.accounts.find(a=>a.id===form.elements.accountId.value);
- if(account && !form.elements.id.value){
-   form.elements.mode.value=account.dividendMode||'cash';
-   toggleReinvestFields(form);
- }
+function renderHoldings(){
+ const html=data.holdings.map(holdingCard).join('')||'<div class="muted">尚無一般持股</div>';
+ homeCards.innerHTML=html;holdingCards.innerHTML=html;
 }
-
-function refreshAccountOptions(sel,assetId){
- const v=sel.value; const aid=assetId||sel.closest('form')?.querySelector('[name=assetId]')?.value;
- sel.innerHTML='<option value="">請選擇</option>'+state.accounts.filter(a=>!aid||a.assetId===aid).map(a=>`<option value="${a.id}">${a.name}</option>`).join('');sel.value=v;
+function trustHtml(r){
+ return `<div class="kv">
+  <span>持有股數</span><strong>${n(r.shares).toLocaleString()}</strong>
+  <span>標的市值</span><strong>${money(r.marketValue)}</strong>
+  <span>現金</span><strong>${money(r.cash)}</strong>
+  <span>參考現值</span><strong>${money(r.currentValue)}</strong>
+  <span>本金餘額</span><strong>${money(r.principal)}</strong>
+  <span>應付費用</span><strong>${money(r.fees)}</strong>
+  <span>參考損益</span><strong class="${r.pnl>=0?'positive':'negative'}">${money(r.pnl)}</strong>
+  <span>參考報酬率</span><strong class="${r.returnRate>=0?'positive':'negative'}">${r.returnRate.toFixed(2)}%</strong>
+  <span>推算成本均價</span><strong>NT$ ${price(r.avgCost)}</strong>
+ </div>`;
 }
-function assetName(id){const a=state.assets.find(x=>x.id===id);return a?`${a.symbol} ${a.name}`:'—'}
-function accountName(id){return state.accounts.find(x=>x.id===id)?.name||'—'}
-function actionButtons(store,id){return `<div class="actions"><button class="mini" data-edit="${store}:${id}">編輯</button><button class="mini delete" data-delete="${store}:${id}">刪除</button></div>`}
-function renderAssets(){
- assetsTable.innerHTML=state.assets.map(a=>`<tr><td><strong>${a.symbol}</strong></td><td>${a.name}</td><td>${a.market}</td><td>${a.type}</td><td>NT$ ${fmtPrice(a.currentPrice)}<div class="muted">${a.priceUpdatedAt?new Date(a.priceUpdatedAt).toLocaleString('zh-TW'):''}</div></td><td>${labels[a.status]}</td><td>${actionButtons('assets',a.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">尚無資料</td></tr>';
+function renderTrust(){
+ const a=trustCalc(latestTrust('self')),b=trustCalc(latestTrust('company')),t=combinedTrust();
+ selfTrust.innerHTML=trustHtml(a);companyTrust.innerHTML=trustHtml(b);totalTrust.innerHTML=trustHtml(t);
+ const rows=[...data.trustSnapshots].sort((a,b)=>b.date.localeCompare(a.date));
+ trustHistory.innerHTML=rows.map(r=>{const c=trustCalc(r);return `<tr><td>${r.date}</td><td>${r.kind==='self'?'自提':'公提'}</td><td>${n(r.shares).toLocaleString()}</td><td>${money(r.marketValue)}</td><td>${money(r.cash)}</td><td>${money(r.principal)}</td><td>NT$ ${price(c.avgCost)}</td><td><button class="mini" data-edit-trust="${r.id}">編輯</button> <button class="mini delete" data-delete-trust="${r.id}">刪除</button></td></tr>`}).join('')||'<tr><td colspan="8" class="muted">尚無資料</td></tr>';
 }
-function renderAccounts(){
- accountsTable.innerHTML=state.accounts.map(a=>`<tr><td>${assetName(a.assetId)}</td><td>${a.name}</td><td>${labels[a.dividendMode]}</td><td>${a.note||''}</td><td>${actionButtons('accounts',a.id)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">尚無資料</td></tr>';
-}
-function renderTransactions(){
- const rows=[...state.transactions].sort((a,b)=>b.date.localeCompare(a.date));
- transactionsTable.innerHTML=rows.map(t=>`<tr><td>${t.date}</td><td>${assetName(t.assetId)}</td><td>${accountName(t.accountId)}</td><td>${labels[t.type]||t.type}</td><td>${num(t.quantity).toLocaleString()}</td><td>${fmt(t.price)}</td><td>${fmt(t.fee)}</td><td>${t.totalCost?fmt(t.totalCost):'—'}</td><td>${actionButtons('transactions',t.id)}</td></tr>`).join('')||'<tr><td colspan="9" class="muted">尚無資料</td></tr>';
+function fillAssetSelect(){
+ dividendForm.assetId.innerHTML='<option value="">請選擇</option>'+data.holdings.map(x=>`<option value="${x.id}">${x.symbol} ${x.name}</option>`).join('');
 }
 function renderDividends(){
- const rows=[...state.dividends].sort((a,b)=>b.date.localeCompare(a.date));
- dividendsTable.innerHTML=rows.map(d=>`<tr><td>${d.date}</td><td>${assetName(d.assetId)}</td><td>${accountName(d.accountId)}</td><td>${labels[d.mode]}${d.mode==='reinvest'&&d.reinvestQuantity?`<div class="muted">+${num(d.reinvestQuantity).toLocaleString()} 股 → ${assetName(d.reinvestAssetId||d.assetId)}</div>`:''}</td><td>${num(d.eligibleShares).toLocaleString()}</td><td>${fmtPrice(d.perShare)}</td><td>${fmt(d.netAmount)}${d.mode==='reinvest'&&num(d.residualCash)>0?`<div class="muted">餘額 ${fmt(d.residualCash)}</div>`:''}</td><td>${actionButtons('dividends',d.id)}</td></tr>`).join('')||'<tr><td colspan="9" class="muted">尚無資料</td></tr>';
+ dividendTable.innerHTML=[...data.dividends].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>{
+  const asset=data.holdings.find(a=>a.id===x.assetId);
+  const mode=x.mode==='cash'?'現金入帳':x.mode==='reinvest'?'股息再投入':'僅記錄';
+  return `<tr><td>${x.date}</td><td>${asset?asset.symbol:'—'}</td><td>${x.source}</td><td>${mode}</td><td>${money(x.amount)}</td><td>${x.note||''}</td><td><button class="mini" data-edit-dividend="${x.id}">編輯</button> <button class="mini delete" data-delete-dividend="${x.id}">刪除</button></td></tr>`;
+ }).join('')||'<tr><td colspan="7" class="muted">尚無資料</td></tr>';
 }
 
-function renderTrust(){
- const rows=[...state.trustSnapshots].sort((a,b)=>(b.month||'').localeCompare(a.month||''));
- trustTable.innerHTML=rows.map(r=>{
-   const delta=trustDelta(r);
-   return `<tr>
-    <td>${r.month||''}<div class="confidence-badge">${confidenceLabel(r.dataConfidence)}</div></td>
-    <td>${num(r.endingShares).toLocaleString()}</td>
-    <td>${r.averageCost?`NT$ ${fmtPrice(r.averageCost)}`:'—'}</td>
-    <td>${trustTotalCost(r)?fmt(trustTotalCost(r)):'—'}</td>
-    <td>${fmt(r.employeeContribution)}</td>
-    <td>${fmt(r.companyContribution)}</td>
-    <td>${r.dividendReinvest?fmt(r.dividendReinvest):'未確認'}</td>
-    <td class="${delta>0?'positive':delta<0?'negative':''}">${delta>0?'+':''}${num(delta).toLocaleString()}</td>
-    <td>${actionButtons('trustSnapshots',r.id)}</td>
-   </tr>`;
- }).join('')||'<tr><td colspan="9" class="muted">尚無信託快照</td></tr>';
-
- const latest=rows[0];
- trustLatestShares.textContent=latest?num(latest.endingShares).toLocaleString():'0';
- trustShareDelta.textContent=latest?(trustDelta(latest)>=0?'+':'')+num(trustDelta(latest)).toLocaleString():'0';
- trustContributionTotal.textContent=latest?fmt(num(latest.employeeContribution)+num(latest.companyContribution)):fmt(0);
- trustDividendReinvest.textContent=latest&&latest.dividendReinvest!==''?fmt(latest.dividendReinvest):'未確認';
+function switchView(view){
+ document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===view));
+ document.querySelectorAll('.tab,.mobile-tab').forEach(x=>x.classList.toggle('active',x.dataset.view===view));
 }
-
-function renderDashboard(){
- const h=holdings(), vals=Object.values(h);
- const cost=vals.reduce((s,x)=>s+x.cost,0), mv=vals.reduce((s,x)=>s+x.marketValue,0), pnl=mv-cost;
- totalMarketValue.textContent=fmt(mv);totalCost.textContent=fmt(cost);unrealizedPnl.textContent=fmt(pnl);
- unrealizedPnl.className=pnl>=0?'positive':'negative';
- cashDividends.textContent=fmt(state.dividends.filter(d=>d.mode==='cash').reduce((s,d)=>s+num(d.netAmount),0));
- reinvestedDividends.textContent=fmt(state.dividends.filter(d=>d.mode==='reinvest').reduce((s,d)=>s+num(d.netAmount),0));
- assetCount.textContent=state.assets.filter(a=>a.status==='active').length;
- const cards=vals.filter(x=>x.asset.status!=='archived').map(x=>{
-  const avg=x.qty?x.cost/x.qty:0,p=x.marketValue-x.cost;
-  return `<article class="asset-card"><header><div><h3>${x.asset.symbol}</h3><small>${x.asset.name}</small></div><div style="text-align:right"><span class="muted" style="display:block;font-size:.72rem">現價</span><strong>NT$ ${fmtPrice(x.asset.currentPrice)}</strong><small style="display:block">${x.asset.priceUpdatedAt?new Date(x.asset.priceUpdatedAt).toLocaleString('zh-TW'):''}</small></div></header><div class="asset-stats"><div><span>持股</span><strong>${x.qty.toLocaleString()} 股</strong></div><div><span>平均成本</span><strong>NT$ ${fmtPrice(avg)}</strong></div><div><span>市值</span><strong>${fmt(x.marketValue)}</strong></div><div><span>損益</span><strong class="${p>=0?'positive':'negative'}">${fmt(p)}</strong></div></div><button class="ghost inline-price-btn" data-price-edit="${x.asset.id}">更新現價</button></article>`;
- }).join('');
- portfolioCards.classList.toggle('empty-state',!cards);portfolioCards.innerHTML=cards||'尚無投資標的';
-}
-function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');setTimeout(()=>toastEl.classList.remove('show'),2200)}
-const toastEl=document.getElementById('toast');
-
-document.addEventListener('click',async e=>{
-
- const closeBtn=e.target.closest('[data-close-dialog]');if(closeBtn){closeBtn.closest('dialog')?.close()}
- const nav=e.target.closest('.mobile-tab,.tab');if(nav){
-   const viewId=nav.dataset.view,target=document.getElementById(viewId);if(!target)return;
-   document.querySelectorAll('.mobile-tab,.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===viewId));
-   document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===viewId));
+document.addEventListener('click',e=>{
+ const nav=e.target.closest('[data-view]');if(nav)switchView(nav.dataset.view);
+ const op=e.target.closest('[data-open]');if(op){
+  const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();
+  d.querySelector('[name=id]').value='';
+  d.querySelectorAll('[name=date]').forEach(x=>x.value=today());
+  const pu=d.querySelector('[name=priceUpdatedAt]');if(pu)pu.value=nowLocal();
+  d.showModal();
  }
- const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());const p=d.querySelector('[name=priceUpdatedAt]');if(p)p.value=nowLocal();renderSelects();if(d.id==='priceCenterDialog')renderPriceCenter();if(d.id==='dividendDialog'){toggleReinvestFields(d.querySelector('form'));}if(d.id==='trustSnapshotDialog'){const f=d.querySelector('form');if(f.elements.month)f.elements.month.value=today().slice(0,7);renderSelects();}d.showModal()}
+ const close=e.target.closest('[data-close]');if(close)close.closest('dialog').close();
 
- const pe=e.target.closest('[data-price-edit]');if(pe){const a=state.assets.find(x=>x.id===pe.dataset.priceEdit);const v=prompt(`${a.symbol} ${a.name}\n請輸入最新現價：`,a.currentPrice||'');if(v!==null&&v!==''){const n=Number(v);if(Number.isFinite(n)&&n>=0){a.currentPrice=n;a.priceUpdatedAt=nowLocal();await put('assets',a);await load();toast('現價已更新')}else alert('請輸入有效價格')}}
-
- const ed=e.target.closest('[data-edit]');if(ed){const [store,id]=ed.dataset.edit.split(':');editRecord(store,id)}
- const de=e.target.closest('[data-delete]');if(de){const [store,id]=de.dataset.delete.split(':');if(confirm('確定刪除這筆資料？')){
-   if(store==='dividends'){const d=state.dividends.find(x=>x.id===id);if(d?.linkedTransactionId)await del('transactions',d.linkedTransactionId)}
-   await del(store,id);await load();toast('已刪除')
- }}
+ const eh=e.target.closest('[data-edit-holding]');if(eh){const x=data.holdings.find(a=>a.id===eh.dataset.editHolding);openEdit(holdingDialog,holdingForm,x)}
+ const dh=e.target.closest('[data-delete-holding]');if(dh&&confirm('確定刪除此標的？')){data.holdings=data.holdings.filter(a=>a.id!==dh.dataset.deleteHolding);saveData();render();toast('已刪除')}
+ const et=e.target.closest('[data-edit-trust]');if(et){const x=data.trustSnapshots.find(a=>a.id===et.dataset.editTrust);openEdit(trustDialog,trustForm,x)}
+ const dt=e.target.closest('[data-delete-trust]');if(dt&&confirm('確定刪除此快照？')){data.trustSnapshots=data.trustSnapshots.filter(a=>a.id!==dt.dataset.deleteTrust);saveData();render();toast('已刪除')}
+ const ed=e.target.closest('[data-edit-dividend]');if(ed){const x=data.dividends.find(a=>a.id===ed.dataset.editDividend);openEdit(dividendDialog,dividendForm,x)}
+ const dd=e.target.closest('[data-delete-dividend]');if(dd&&confirm('確定刪除此配息？')){data.dividends=data.dividends.filter(a=>a.id!==dd.dataset.deleteDividend);saveData();render();toast('已刪除')}
 });
-function editRecord(store,id){
- const record=state[store].find(x=>x.id===id), map={assets:'assetDialog',accounts:'accountDialog',transactions:'transactionDialog',dividends:'dividendDialog'};
- if(store==='trustSnapshots')map.trustSnapshots='trustSnapshotDialog';
- const d=document.getElementById(map[store]), f=d.querySelector('form');f.reset();
- Object.entries(record).forEach(([k,v])=>{if(f.elements[k])f.elements[k].value=v});
- if(store==='transactions'||store==='dividends'||store==='trustSnapshots')refreshAccountOptions(f.elements.accountId,record.assetId);
- if(store==='dividends')toggleReinvestFields(f);
- d.showModal();
+function openEdit(dialog,form,obj){
+ form.reset();Object.entries(obj).forEach(([k,v])=>{if(form.elements[k])form.elements[k].value=v});dialog.showModal();
 }
+function formObj(form){return Object.fromEntries(new FormData(form).entries())}
 
-dividendForm.elements.mode.addEventListener('change',()=>toggleReinvestFields(dividendForm));
-dividendForm.elements.accountId.addEventListener('change',()=>applyDividendAccountDefaults(dividendForm));
-
-document.querySelectorAll('#trustSnapshotForm select[name=assetId]').forEach(s=>s.addEventListener('change',e=>refreshAccountOptions(trustSnapshotForm.elements.accountId,e.target.value)));
-document.querySelectorAll('select[name=assetId]').forEach(s=>s.addEventListener('change',e=>{const f=e.target.closest('form');if(f?.elements.accountId)refreshAccountOptions(f.elements.accountId,e.target.value)}));
-
-
-function renderPriceCenter(){
- const box=document.getElementById('priceCenterList');
- box.innerHTML=state.assets.filter(a=>a.status!=='archived').map(a=>`<label class="price-row"><span><strong>${a.symbol} ${a.name}</strong><small>目前：NT$ ${fmtPrice(a.currentPrice)}</small></span><input type="number" step="0.0001" min="0" name="price_${a.id}" value="${a.currentPrice||''}" placeholder="現價"></label>`).join('')||'<div class="muted">尚無投資標的</div>';
-}
-priceCenterForm.addEventListener('submit',async e=>{
- e.preventDefault();const fd=new FormData(e.target);let count=0;
- for(const a of state.assets){const v=fd.get(`price_${a.id}`);if(v!==null&&String(v).trim()!==''){const n=Number(v);if(Number.isFinite(n)&&n>=0){a.currentPrice=n;a.priceUpdatedAt=nowLocal();await put('assets',a);count++}}}
- e.target.closest('dialog').close();await load();toast(`已更新 ${count} 檔現價`);
+holdingForm.addEventListener('submit',e=>{
+ e.preventDefault();const x=formObj(e.target);x.id=x.id||uid();
+ ['shares','totalCost','averageCost','currentPrice'].forEach(k=>x[k]=n(x[k]));
+ if(!x.averageCost&&x.shares)x.averageCost=x.totalCost/x.shares;
+ data.holdings=data.holdings.filter(a=>a.id!==x.id);data.holdings.push(x);saveData();e.target.closest('dialog').close();render();toast('持股已儲存');
+});
+trustForm.addEventListener('submit',e=>{
+ e.preventDefault();const x=formObj(e.target);x.id=x.id||uid();
+ ['shares','marketValue','cash','principal','fees','dividendReinvest'].forEach(k=>x[k]=x[k]===''?'':n(x[k]));
+ data.trustSnapshots=data.trustSnapshots.filter(a=>a.id!==x.id);data.trustSnapshots.push(x);saveData();e.target.closest('dialog').close();render();toast('信託快照已儲存');
+});
+dividendForm.addEventListener('submit',e=>{
+ e.preventDefault();const x=formObj(e.target);x.id=x.id||uid();x.amount=n(x.amount);
+ data.dividends=data.dividends.filter(a=>a.id!==x.id);data.dividends.push(x);saveData();e.target.closest('dialog').close();render();toast('配息已儲存');
 });
 
-
-trustSnapshotForm.addEventListener('submit',async e=>{
- e.preventDefault();
- const x=formObject(e.target);
- x.id=x.id||uid();
- ['endingShares','averageCost','totalCost','employeeContribution','companyContribution','dividendReinvest'].forEach(k=>{
-   x[k]=x[k]===''?'':num(x[k]);
- });
- if(!x.totalCost && x.averageCost && x.endingShares)x.totalCost=num(x.averageCost)*num(x.endingShares);
- await put('trustSnapshots',x);
- e.target.closest('dialog').close();
- await load();
- toast('信託快照已儲存');
-});
-
-function formObject(form){return Object.fromEntries(new FormData(form).entries())}
-assetForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();x.currentPrice=num(x.currentPrice);if(!x.priceUpdatedAt)x.priceUpdatedAt=nowLocal();await put('assets',x);e.target.closest('dialog').close();await load();toast('標的已儲存')});
-accountForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();await put('accounts',x);e.target.closest('dialog').close();await load();toast('持有來源已儲存')});
-transactionForm.addEventListener('submit',async e=>{e.preventDefault();const x=formObject(e.target);x.id=x.id||uid();['quantity','price','fee','totalCost'].forEach(k=>x[k]=num(x[k]));await put('transactions',x);e.target.closest('dialog').close();await load();toast('交易已儲存')});
-dividendForm.addEventListener('submit',async e=>{
- e.preventDefault();
- const x=formObject(e.target);
- x.id=x.id||uid();
- ['eligibleShares','perShare','netAmount','reinvestPrice','reinvestQuantity','residualCash'].forEach(k=>x[k]=num(x[k]));
- x.createReinvestTransaction=e.target.elements.createReinvestTransaction?.checked||false;
- const old=state.dividends.find(d=>d.id===x.id);
- if(old?.linkedTransactionId && (!x.createReinvestTransaction || x.mode!=='reinvest')){
-   await del('transactions',old.linkedTransactionId);
-   x.linkedTransactionId='';
- }
- if(x.mode==='reinvest' && x.createReinvestTransaction && x.reinvestQuantity>0){
-   const sourceAccount=state.accounts.find(a=>a.id===x.accountId);
-   let targetAccountId=x.accountId;
-   if(x.reinvestAssetId && x.reinvestAssetId!==x.assetId){
-     const match=state.accounts.find(a=>a.assetId===x.reinvestAssetId && a.name===sourceAccount?.name);
-     if(match)targetAccountId=match.id;
-     else{
-       const newAccount={id:uid(),assetId:x.reinvestAssetId,name:sourceAccount?.name||'股息再投入',dividendMode:'cash',note:'由股息再投入自動建立'};
-       await put('accounts',newAccount);targetAccountId=newAccount.id;
-     }
-   }
-   const tx={
-     id:old?.linkedTransactionId||uid(),
-     assetId:x.reinvestAssetId||x.assetId,
-     accountId:targetAccountId,
-     type:'reinvest',
-     date:x.reinvestDate||x.date,
-     quantity:x.reinvestQuantity,
-     price:x.reinvestPrice,
-     fee:0,
-     note:`由 ${assetName(x.assetId)} 配息再投入`
-   };
-   await put('transactions',tx);
-   x.linkedTransactionId=tx.id;
- }
- await put('dividends',x);
- e.target.closest('dialog').close();
- await load();
- toast(x.mode==='reinvest'?'再投入配息已儲存':'配息已儲存');
-});
-
-
-function normalizeBackup(parsed){
- const raw=parsed?.data||parsed;
- if(!raw || typeof raw!=='object')throw new Error('找不到可匯入的資料內容');
- const normalized={};
- for(const s of stores)normalized[s]=Array.isArray(raw[s])?raw[s]:[];
- if(!stores.some(s=>normalized[s].length))throw new Error('備份檔沒有任何投資資料');
- for(const s of stores){
-   normalized[s]=normalized[s].filter(x=>x&&typeof x==='object').map(x=>({...x,id:x.id||uid()}));
- }
- return normalized;
-}
-async function replaceAllData(data){
- const snapshot={};
- for(const s of stores)snapshot[s]=await all(s);
- try{
-   for(const s of stores)await clearStore(s);
-   for(const s of stores)for(const r of data[s])await put(s,r);
- }catch(err){
-   for(const s of stores)await clearStore(s);
-   for(const s of stores)for(const r of snapshot[s])await put(s,r);
-   throw err;
- }
-}
-
-exportBtn.onclick=async()=>{
- const payload={app:'Willy AI Investment System',version:APP_VERSION,exportedAt:new Date().toISOString(),recordCounts:Object.fromEntries(stores.map(s=>[s,state[s].length])),data:state};
+exportBtn.onclick=()=>{
+ const payload={app:'Willy AI Investment System',version:APP_VERSION,exportedAt:new Date().toISOString(),data};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');
- a.href=URL.createObjectURL(blob);a.download=`Willy-Investment-Backup-${today()}.json`;a.click();URL.revokeObjectURL(a.href);
+ a.href=URL.createObjectURL(blob);a.download=`WAIS-Backup-${today()}.json`;a.click();URL.revokeObjectURL(a.href);
 };
 importFile.onchange=async e=>{
  try{
-  const file=e.target.files?.[0];
-  if(!file)throw new Error('未選擇備份檔');
-  const text=await file.text();
-  const parsed=JSON.parse(text);
-  const normalized=normalizeBackup(parsed);
-  const counts=stores.map(storeName=>`${storeName}: ${normalized[storeName].length}`).join('\\n');
-  if(!confirm(`即將匯入：\\n${counts}\\n\\n這會取代目前資料，確定繼續？`))return;
-  window.__waisSkipAutoRestore=true;
-  await replaceAllData(normalized);
-  localStorage.setItem(MIRROR_KEY,JSON.stringify({version:APP_VERSION,data:normalized,at:new Date().toISOString()}));
-  await load();
-  toast('備份已成功還原');
- }catch(err){
-  console.error(err);
-  alert('匯入失敗：'+(err?.message||String(err)));
- }finally{
-  window.__waisSkipAutoRestore=false;
-  e.target.value='';
- }
+  const file=e.target.files[0];if(!file)return;
+  const parsed=JSON.parse(await file.text()),raw=parsed.data||parsed;
+  if(!Array.isArray(raw.holdings))throw new Error('備份格式不正確');
+  if(!confirm('匯入會取代目前資料，確定繼續？'))return;
+  data={version:APP_VERSION,holdings:raw.holdings||[],trustSnapshots:raw.trustSnapshots||[],dividends:raw.dividends||[]};
+  saveData();render();toast('匯入成功');
+ }catch(err){alert('匯入失敗：'+err.message)}finally{e.target.value=''}
 };
-clearBtn.onclick=async()=>{if(confirm('這會清除目前瀏覽器中的全部投資資料與本機鏡像，確定嗎？')){window.__waisSkipAutoRestore=true;for(const storeName of stores)await clearStore(storeName);localStorage.removeItem(MIRROR_KEY);await load();window.__waisSkipAutoRestore=false;toast('全部資料已清除')}};
-seedBtn.onclick=async()=>{if(state.assets.length&&!confirm('這會以 Willy 初始持股取代目前資料，確定嗎？'))return;window.__waisSkipAutoRestore=true;const data=initialPortfolio();await replaceAllData(data);localStorage.setItem(MIRROR_KEY,JSON.stringify({version:APP_VERSION,data,at:new Date().toISOString()}));await load();window.__waisSkipAutoRestore=false;toast('Willy 初始持股已恢復')};
+restoreDefaultBtn.onclick=()=>{if(confirm('確定恢復 Willy 初始資料？目前資料將被取代。')){data=defaultData();saveData();render();toast('已恢復初始資料')}};
+clearBtn.onclick=()=>{if(confirm('確定清除全部資料？')){data={version:APP_VERSION,holdings:[],trustSnapshots:[],dividends:[]};saveData();render();toast('已清除')}};
 
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;installBtn.classList.remove('hidden')});
-installBtn.onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;installBtn.classList.add('hidden')}};
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');
-(async()=>{try{db=await openDB();await load()}catch(err){console.error(err);alert('WAIS 啟動失敗：'+(err?.message||String(err)))}})();
-
-window.addEventListener('beforeunload',saveMirror);
+render();
