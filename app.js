@@ -1,5 +1,5 @@
 
-const APP_VERSION='3.1.0';
+const APP_VERSION='3.2.0';
 const DB_NAME='willy-investment-v3', DB_VERSION=1;
 const stores=['assets','accounts','transactions','dividends','trustSnapshots'];
 const MIRROR_KEY='wais-v3-mirror';
@@ -77,7 +77,7 @@ async function migrateData(){
 async function load(){
  for(const s of stores)state[s]=await all(s);
  const total=stores.reduce((n,k)=>n+state[k].length,0);
- if(total===0){const m=readMirror();if(m?.data){for(const k of stores){await clearStore(k);for(const r of (m.data[k]||[]))await put(k,r)}for(const k of stores)state[k]=await all(k);}}
+ if(total===0&&!window.__waisSkipAutoRestore){const m=readMirror();if(m?.data){for(const k of stores){await clearStore(k);for(const r of (m.data[k]||[]))await put(k,r)}for(const k of stores)state[k]=await all(k);}}
  const changed=await migrateData();
  if(changed)for(const s of stores)state[s]=await all(s);
  render();
@@ -218,9 +218,11 @@ const toastEl=document.getElementById('toast');
 document.addEventListener('click',async e=>{
 
  const closeBtn=e.target.closest('[data-close-dialog]');if(closeBtn){closeBtn.closest('dialog')?.close()}
- const mtab=e.target.closest('.mobile-tab');if(mtab){document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));mtab.classList.add('active');document.getElementById(mtab.dataset.view).classList.add('active')}
-
- const tab=e.target.closest('.tab'); if(tab){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));tab.classList.add('active');document.querySelectorAll('.mobile-tab').forEach(x=>x.classList.toggle('active',x.dataset.view===tab.dataset.view));document.getElementById(tab.dataset.view).classList.add('active')}
+ const nav=e.target.closest('.mobile-tab,.tab');if(nav){
+   const viewId=nav.dataset.view,target=document.getElementById(viewId);if(!target)return;
+   document.querySelectorAll('.mobile-tab,.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===viewId));
+   document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===viewId));
+ }
  const op=e.target.closest('[data-open]');if(op){const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();d.querySelector('[name=id]').value='';d.querySelectorAll('[name=date]').forEach(x=>x.value=today());const p=d.querySelector('[name=priceUpdatedAt]');if(p)p.value=nowLocal();renderSelects();if(d.id==='priceCenterDialog')renderPriceCenter();if(d.id==='dividendDialog'){toggleReinvestFields(d.querySelector('form'));}if(d.id==='trustSnapshotDialog'){const f=d.querySelector('form');if(f.elements.month)f.elements.month.value=today().slice(0,7);renderSelects();}d.showModal()}
 
  const pe=e.target.closest('[data-price-edit]');if(pe){const a=state.assets.find(x=>x.id===pe.dataset.priceEdit);const v=prompt(`${a.symbol} ${a.name}\n請輸入最新現價：`,a.currentPrice||'');if(v!==null&&v!==''){const n=Number(v);if(Number.isFinite(n)&&n>=0){a.currentPrice=n;a.priceUpdatedAt=nowLocal();await put('assets',a);await load();toast('現價已更新')}else alert('請輸入有效價格')}}
@@ -356,12 +358,9 @@ importFile.onchange=async e=>{
   const text=await file.text();
   const parsed=JSON.parse(text);
   const normalized=normalizeBackup(parsed);
-  const counts=stores.map(s=>`${s}: ${normalized[s].length}`).join('
-');
-  if(!confirm(`即將匯入：
-${counts}
-
-這會取代目前資料，確定繼續？`))return;
+  const counts=stores.map(storeName=>`${storeName}: ${normalized[storeName].length}`).join('\\n');
+  if(!confirm(`即將匯入：\\n${counts}\\n\\n這會取代目前資料，確定繼續？`))return;
+  window.__waisSkipAutoRestore=true;
   await replaceAllData(normalized);
   localStorage.setItem(MIRROR_KEY,JSON.stringify({version:APP_VERSION,data:normalized,at:new Date().toISOString()}));
   await load();
@@ -370,15 +369,16 @@ ${counts}
   console.error(err);
   alert('匯入失敗：'+(err?.message||String(err)));
  }finally{
+  window.__waisSkipAutoRestore=false;
   e.target.value='';
  }
 };
-clearBtn.onclick=async()=>{if(confirm('這會清除目前瀏覽器中的全部投資資料，確定嗎？')){for(const s of stores)await clearStore(s);await load();toast('全部資料已清除')}};
-seedBtn.onclick=async()=>{if(state.assets.length&&!confirm('這會以 Willy 初始持股取代目前資料，確定嗎？'))return;const data=initialPortfolio();for(const k of stores){await clearStore(k);for(const r of data[k])await put(k,r)}await load();toast('Willy 初始持股已恢復');};
+clearBtn.onclick=async()=>{if(confirm('這會清除目前瀏覽器中的全部投資資料與本機鏡像，確定嗎？')){window.__waisSkipAutoRestore=true;for(const storeName of stores)await clearStore(storeName);localStorage.removeItem(MIRROR_KEY);await load();window.__waisSkipAutoRestore=false;toast('全部資料已清除')}};
+seedBtn.onclick=async()=>{if(state.assets.length&&!confirm('這會以 Willy 初始持股取代目前資料，確定嗎？'))return;window.__waisSkipAutoRestore=true;const data=initialPortfolio();await replaceAllData(data);localStorage.setItem(MIRROR_KEY,JSON.stringify({version:APP_VERSION,data,at:new Date().toISOString()}));await load();window.__waisSkipAutoRestore=false;toast('Willy 初始持股已恢復')};
 
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;installBtn.classList.remove('hidden')});
 installBtn.onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;installBtn.classList.add('hidden')}};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');
-(async()=>{db=await openDB();await load()})();
+(async()=>{try{db=await openDB();await load()}catch(err){console.error(err);alert('WAIS 啟動失敗：'+(err?.message||String(err)))}})();
 
 window.addEventListener('beforeunload',saveMirror);
