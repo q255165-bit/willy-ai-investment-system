@@ -95,3 +95,9 @@ Repository → Settings → Pages → Deploy from a branch → main / root
 - 恢復初始持股與匯入資料時同步更新本機鏡像
 - 啟動失敗時顯示明確錯誤訊息
 - 更新 Service Worker 快取版本
+
+## V3.2.1 Stable
+- 修正 IndexedDB 缺少 trustSnapshots object store 導致啟動失敗
+- 資料庫版本提升至 4，強制觸發結構升級
+- 啟動時自動檢查並補建缺少的資料表
+- 保留既有資料，不需清除網站資料

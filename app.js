@@ -1,5 +1,5 @@
 
-const APP_VERSION='3.2.0';
+const APP_VERSION='3.2.1';
 const DB_NAME='willy-investment-v3', DB_VERSION=1;
 const stores=['assets','accounts','transactions','dividends','trustSnapshots'];
 const MIRROR_KEY='wais-v3-mirror';
@@ -41,8 +41,30 @@ function readMirror(){
 function openDB(){
  return new Promise((resolve,reject)=>{
   const req=indexedDB.open(DB_NAME,DB_VERSION);
-  req.onupgradeneeded=e=>{const d=e.target.result; stores.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'})})};
-  req.onsuccess=e=>resolve(e.target.result); req.onerror=()=>reject(req.error);
+  req.onupgradeneeded=e=>{
+   const d=e.target.result;
+   stores.forEach(s=>{
+    if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'});
+   });
+  };
+  req.onsuccess=e=>{
+   const d=e.target.result;
+   const missing=stores.filter(s=>!d.objectStoreNames.contains(s));
+   if(missing.length){
+    const nextVersion=d.version+1;
+    d.close();
+    const retry=indexedDB.open(DB_NAME,nextVersion);
+    retry.onupgradeneeded=ev=>{
+     const db2=ev.target.result;
+     stores.forEach(s=>{
+      if(!db2.objectStoreNames.contains(s))db2.createObjectStore(s,{keyPath:'id'});
+     });
+    };
+    retry.onsuccess=ev=>resolve(ev.target.result);
+    retry.onerror=()=>reject(retry.error);
+   }else resolve(d);
+  };
+  req.onerror=()=>reject(req.error);
  });
 }
 function all(store){return new Promise((res,rej)=>{const r=db.transaction(store).objectStore(store).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
