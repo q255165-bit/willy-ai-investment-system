@@ -1,5 +1,5 @@
 
-const APP_VERSION='3.4.0';
+const APP_VERSION='3.4.1';
 const KEY='wais-v3.4-data';
 
 const defaultData=()=>({
@@ -21,7 +21,19 @@ let data=loadData();
 
 function loadData(){
  try{
-  const raw=localStorage.getItem(KEY);
+  let raw=localStorage.getItem(KEY);
+  if(!raw){
+   const previous=localStorage.getItem('wais-v3.3-data');
+   if(previous){
+    try{
+     const old=JSON.parse(previous);
+     old.foreignAssets=Array.isArray(old.foreignAssets)?old.foreignAssets:[];
+     old.settings=old.settings||{usdTwd:0,fxUpdatedAt:'',twdCash:0,usdCash:0};
+     localStorage.setItem(KEY,JSON.stringify(old));
+     raw=JSON.stringify(old);
+    }catch(e){}
+   }
+  }
   if(!raw)return defaultData();
   const p=JSON.parse(raw);
   return {
@@ -127,10 +139,15 @@ function switchView(view){
 document.addEventListener('click',e=>{
  const nav=e.target.closest('[data-view]');if(nav)switchView(nav.dataset.view);
  const op=e.target.closest('[data-open]');if(op){
-  const d=document.getElementById(op.dataset.open);d.querySelector('form').reset();
-  d.querySelector('[name=id]').value='';
+  const d=document.getElementById(op.dataset.open);if(!d)return;const form=d.querySelector('form');if(form)form.reset();
+  const idField=d.querySelector('[name=id]');if(idField)idField.value='';
   d.querySelectorAll('[name=date]').forEach(x=>x.value=today());
-  const pu=d.querySelector('[name=priceUpdatedAt]');if(pu)pu.value=nowLocal();if(d.id==='settingsDialog'){Object.entries(data.settings).forEach(([k,v])=>{if(d.querySelector(`[name=${k}]`))d.querySelector(`[name=${k}]`).value=v});if(!d.querySelector('[name=fxUpdatedAt]').value)d.querySelector('[name=fxUpdatedAt]').value=nowLocal()}d.showModal();
+  const pu=d.querySelector('[name=priceUpdatedAt]');if(pu)pu.value=nowLocal();if(d.id==='settingsDialog'){
+   const settings=data.settings||{usdTwd:0,fxUpdatedAt:'',twdCash:0,usdCash:0};
+   Object.entries(settings).forEach(([k,v])=>{const el=d.querySelector(`[name="${k}"]`);if(el)el.value=v??''});
+   const fxTime=d.querySelector('[name="fxUpdatedAt"]');if(fxTime&&!fxTime.value)fxTime.value=nowLocal();
+  }
+  d.showModal();
  }
  const close=e.target.closest('[data-close]');if(close)close.closest('dialog').close();
 
@@ -164,7 +181,7 @@ dividendForm.addEventListener('submit',e=>{
  data.dividends=data.dividends.filter(a=>a.id!==x.id);data.dividends.push(x);saveData();e.target.closest('dialog').close();render();toast('配息已儲存');
 });
 
-foreignForm.addEventListener('submit',e=>{e.preventDefault();const x=formObj(e.target);x.id=x.id||uid();['units','totalCostOriginal','currentPriceOriginal','averageCostOriginal','cumulativeDividendsOriginal'].forEach(k=>x[k]=n(x[k]));if(!x.averageCostOriginal&&x.units)x.averageCostOriginal=x.totalCostOriginal/x.units;data.foreignAssets=data.foreignAssets.filter(a=>a.id!==x.id);data.foreignAssets.push(x);saveData();e.target.closest('dialog').close();render();toast('海外資產已儲存')});settingsForm.addEventListener('submit',e=>{e.preventDefault();const x=formObj(e.target);['usdTwd','twdCash','usdCash'].forEach(k=>x[k]=n(x[k]));data.settings=x;saveData();e.target.closest('dialog').close();render();toast('匯率與現金已儲存')});
+document.getElementById('foreignForm').addEventListener('submit',e=>{e.preventDefault();const x=formObj(e.target);x.id=x.id||uid();['units','totalCostOriginal','currentPriceOriginal','averageCostOriginal','cumulativeDividendsOriginal'].forEach(k=>x[k]=n(x[k]));if(!x.averageCostOriginal&&x.units)x.averageCostOriginal=x.totalCostOriginal/x.units;data.foreignAssets=data.foreignAssets.filter(a=>a.id!==x.id);data.foreignAssets.push(x);saveData();e.target.closest('dialog').close();render();toast('海外資產已儲存')});document.getElementById('settingsForm').addEventListener('submit',e=>{e.preventDefault();const x=formObj(e.target);['usdTwd','twdCash','usdCash'].forEach(k=>x[k]=n(x[k]));data.settings=x;saveData();e.target.closest('dialog').close();render();toast('匯率與現金已儲存')});
 exportBtn.onclick=()=>{
  const payload={app:'Willy AI Investment System',version:APP_VERSION,exportedAt:new Date().toISOString(),data};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');
