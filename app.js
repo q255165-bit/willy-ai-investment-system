@@ -1,6 +1,6 @@
 
-const APP_VERSION='4.0.1';
-const KEY='wais-v4.0-data';
+const APP_VERSION='5.0.0';
+const KEY='wais-v5.0-data';
 
 const defaultData=()=>({
  version:APP_VERSION,
@@ -21,7 +21,7 @@ let data=loadData();
 
 function loadData(){
  try{
-  let raw=localStorage.getItem(KEY);if(!raw){const prev=localStorage.getItem('wais-v3.4-data');if(prev){try{const old=JSON.parse(prev);old.settings=old.settings||{usdTwd:0,fxUpdatedAt:''};delete old.settings.twdCash;delete old.settings.usdCash;localStorage.setItem(KEY,JSON.stringify(old));raw=JSON.stringify(old)}catch(e){}}}
+  let raw=localStorage.getItem(KEY);if(!raw){const prev=localStorage.getItem('wais-v4.0-data');if(prev){localStorage.setItem(KEY,prev);raw=prev}}if(!raw){const prev=localStorage.getItem('wais-v3.4-data');if(prev){try{const old=JSON.parse(prev);old.settings=old.settings||{usdTwd:0,fxUpdatedAt:''};delete old.settings.twdCash;delete old.settings.usdCash;localStorage.setItem(KEY,JSON.stringify(old));raw=JSON.stringify(old)}catch(e){}}}
   if(!raw){
    const previous=localStorage.getItem('wais-v3.3-data');
    if(previous){
@@ -45,7 +45,7 @@ function loadData(){
   console.error(e);return defaultData();
  }
 }
-function saveData(){localStorage.setItem(KEY,JSON.stringify(data));}
+function saveData(){localStorage.setItem(KEY,JSON.stringify(data));window.dispatchEvent(new CustomEvent('wais-local-data-changed',{detail:{data,version:APP_VERSION}}));}
 function uid(){return crypto.randomUUID()}
 function n(v){return Number(v||0)}
 function money(v){return new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(n(v))}
@@ -203,3 +203,5 @@ restoreDefaultBtn.onclick=()=>{if(confirm('確定恢復 Willy 初始資料？目
 clearBtn.onclick=()=>{if(confirm('確定清除全部資料？')){data={version:APP_VERSION,holdings:[],trustSnapshots:[],foreignAssets:[],settings:{usdTwd:0,fxUpdatedAt:''},dividends:[]};saveData();render();toast('已清除')}};
 
 render();
+
+window.WAISBridge={getData:()=>JSON.parse(JSON.stringify(data)),setData:(incoming)=>{data={version:APP_VERSION,holdings:Array.isArray(incoming.holdings)?incoming.holdings:[],trustSnapshots:Array.isArray(incoming.trustSnapshots)?incoming.trustSnapshots:[],foreignAssets:Array.isArray(incoming.foreignAssets)?incoming.foreignAssets:[],settings:incoming.settings||{usdTwd:0,fxUpdatedAt:''},dividends:Array.isArray(incoming.dividends)?incoming.dividends:[]};localStorage.setItem(KEY,JSON.stringify(data));render()},getVersion:()=>APP_VERSION};window.dispatchEvent(new Event('wais-ready'));

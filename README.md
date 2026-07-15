@@ -34,3 +34,10 @@ Manual Control Edition
 ## V4.0.1 Stable
 - 獲利紅色、虧損綠色、持平白色
 - 損益與報酬率增加 + / - 符號
+
+## V5.0.0 Cloud Sync
+- Firebase Authentication 登入
+- Cloud Firestore 跨裝置同步
+- 保留本機資料與離線使用
+- 修改後自動同步，另有立即同步
+- 詳見 FIREBASE-SETUP.md

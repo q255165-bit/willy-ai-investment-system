@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
-  <title>WAIS V4.0.1 Stable</title>
+  <title>WAIS V5.0.0 Cloud Sync</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,9 +12,9 @@
 <header class="topbar">
   <div>
     <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-    <h1>投資管理中心 <span>V4.0.1 Stable</span></h1>
+    <h1>投資管理中心 <span>V5.0.0 Cloud Sync</span></h1>
   </div>
-</header>
+  <div class="cloud-status" id="cloudStatus"><span class="status-dot offline"></span><span id="cloudStatusText">本機模式</span></div></header>
 
 <main>
   <section class="summary-grid">
@@ -96,7 +96,7 @@
     <div class="panel backup-panel">
       <h2>資料備份與還原</h2>
       <p>V4.0.0 支援美元資產與匯率換算，總資產不含現金。</p>
-      <div class="backup-actions">
+      <div class="sync-panel"><h3>雲端同步</h3><p id="syncDescription">尚未連接 Firebase。完成設定後，手機與電腦可使用同一帳號同步。</p><div class="sync-actions"><button class="primary" data-open="cloudSetupDialog">設定 Firebase</button><button class="ghost" id="loginBtn">登入／註冊</button><button class="ghost" id="syncNowBtn" disabled>立即同步</button><button class="danger" id="logoutBtn" disabled>登出</button></div><div class="sync-meta"><span>登入帳號：<strong id="signedInUser">未登入</strong></span><span>最後同步：<strong id="lastSyncAt">—</strong></span></div></div><div class="backup-actions">
         <button id="exportBtn" class="primary">匯出 JSON</button>
         <label class="file-button">匯入 JSON<input id="importFile" type="file" accept=".json,application/json"></label>
         <button class="ghost" data-open="settingsDialog">匯率設定</button><button id="restoreDefaultBtn" class="ghost">恢復 Willy 初始資料</button>
@@ -169,7 +169,7 @@
 </form>
 </dialog>
 
-<div id="toast" class="toast"></div>
-<script src="app.js"></script>
+<dialog id="cloudSetupDialog"><form id="cloudSetupForm"><div class="dialog-head"><h3>Firebase 雲端設定</h3><button type="button" class="icon" data-close>×</button></div><p class="dialog-note">請填入 Firebase Web App 的設定值。</p><div class="form-grid"><label>apiKey<input name="apiKey" required></label><label>authDomain<input name="authDomain" required></label><label>projectId<input name="projectId" required></label><label>appId<input name="appId" required></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存設定</button></div></form></dialog><dialog id="authDialog"><form id="authForm"><div class="dialog-head"><h3>WAIS 雲端帳號</h3><button type="button" class="icon" data-close>×</button></div><div class="form-grid"><label>電子郵件<input name="email" type="email" required></label><label>密碼<input name="password" type="password" minlength="6" required></label></div><p class="dialog-note">第一次使用請先建立帳號，各裝置使用同一組帳號登入。</p><div class="dialog-actions"><button type="button" class="ghost" data-action="register">建立帳號</button><button type="submit" class="primary">登入</button></div></form></dialog><div id="toast" class="toast"></div>
+<script src="app.js"></script><script type="module" src="cloud-sync.js"></script>
 </body>
 </html>
