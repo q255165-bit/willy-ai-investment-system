@@ -48,3 +48,9 @@ Manual Control Edition
 - 優先使用登入彈窗，彈窗受阻時改用重新導向
 - 移除 Email／Password 建立帳號表單
 - 請在 Firebase Authentication 已授權網域加入 q255165-bit.github.io
+
+## V5.0.2
+- 修正 PWA 卡在舊版
+- 啟動時強制檢查新版
+- 自動清除舊快取
+- 新增重新載入最新版按鈕
