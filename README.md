@@ -41,3 +41,10 @@ Manual Control Edition
 - 保留本機資料與離線使用
 - 修改後自動同步，另有立即同步
 - 詳見 FIREBASE-SETUP.md
+
+## V5.0.1 Google Sync
+- 登入方式由 Email／Password 改為 Google
+- 手機與電腦使用同一 Google 帳號同步
+- 優先使用登入彈窗，彈窗受阻時改用重新導向
+- 移除 Email／Password 建立帳號表單
+- 請在 Firebase Authentication 已授權網域加入 q255165-bit.github.io

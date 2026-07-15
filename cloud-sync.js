@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-import { getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { getFirestore,doc,getDoc,setDoc,serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 const CONFIG_KEY='wais-firebase-config',SYNC_TIME_KEY='wais-last-cloud-sync';
@@ -22,9 +22,34 @@ async function merge(){try{status('syncing','同步中');const snap=await getDoc
 window.addEventListener('wais-local-data-changed',()=>{if(!user)return;clearTimeout(timer);timer=setTimeout(upload,1500)});
 document.addEventListener('click',e=>{const o=e.target.closest('[data-open="cloudSetupDialog"]');if(o){const f=$('cloudSetupForm'),c=cfg()||{};f.reset();Object.entries(c).forEach(([k,v])=>{if(f.elements[k])f.elements[k].value=v})}});
 $('cloudSetupForm').addEventListener('submit',e=>{e.preventDefault();localStorage.setItem(CONFIG_KEY,JSON.stringify(Object.fromEntries(new FormData(e.target).entries())));e.target.closest('dialog').close();toast('設定已儲存');setTimeout(()=>location.reload(),600)});
-$('loginBtn').addEventListener('click',()=>{if(!auth)return toast('請先設定 Firebase');$('authDialog').showModal()});
-$('authForm').addEventListener('submit',async e=>{e.preventDefault();const x=Object.fromEntries(new FormData(e.target).entries());try{await signInWithEmailAndPassword(auth,x.email,x.password);e.target.closest('dialog').close();toast('登入成功')}catch(err){toast('登入失敗：'+err.message)}});
-document.addEventListener('click',async e=>{if(!e.target.closest('[data-action="register"]'))return;const f=$('authForm'),x=Object.fromEntries(new FormData(f).entries());try{await createUserWithEmailAndPassword(auth,x.email,x.password);f.closest('dialog').close();toast('帳號建立成功')}catch(err){toast('建立失敗：'+err.message)}});
+$('loginBtn').addEventListener('click',async()=>{
+ if(!auth)return toast('請先設定 Firebase');
+ const provider=new GoogleAuthProvider();
+ provider.setCustomParameters({prompt:'select_account'});
+ try{
+  await signInWithPopup(auth,provider);
+  toast('Google 登入成功');
+ }catch(err){
+  console.error(err);
+  if(['auth/popup-blocked','auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(err.code)){
+   try{await signInWithRedirect(auth,provider)}
+   catch(e){toast('Google 登入失敗：'+e.message)}
+  }else toast('Google 登入失敗：'+err.message);
+ }
+});$('authDialog').showModal()});
+const x=Object.fromEntries(new FormData(e.target).entries());try{await signInWithEmailAndPassword(auth,x.email,x.password);e.target.closest('dialog').close();toast('登入成功')}catch(err){toast('登入失敗：'+err.message)}});
+
 $('syncNowBtn').addEventListener('click',upload);
 $('logoutBtn').addEventListener('click',async()=>{if(auth)await signOut(auth);toast('已登出')});
-window.addEventListener('wais-ready',init);if(window.WAISBridge)init();ui();
+async function handleRedirect(){
+ if(!auth)return;
+ try{
+  const result=await getRedirectResult(auth);
+  if(result?.user)toast('Google 登入成功');
+ }catch(err){
+  console.error(err);toast('登入返回處理失敗：'+err.message);
+ }
+}
+window.addEventListener('wais-ready',async()=>{await init();await handleRedirect()});
+if(window.WAISBridge){init().then(handleRedirect)}
+ui();

@@ -1,5 +1,5 @@
 
-const APP_VERSION='5.0.0';
+const APP_VERSION='5.0.1';
 const KEY='wais-v5.0-data';
 
 const defaultData=()=>({
