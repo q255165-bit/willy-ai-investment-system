@@ -1,5 +1,5 @@
 
-const APP_VERSION='4.0.0';
+const APP_VERSION='4.0.1';
 const KEY='wais-v4.0-data';
 
 const defaultData=()=>({
@@ -50,6 +50,9 @@ function uid(){return crypto.randomUUID()}
 function n(v){return Number(v||0)}
 function money(v){return new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(n(v))}
 function price(v){return new Intl.NumberFormat('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:4}).format(n(v))}
+function signedMoney(v){const x=n(v);return x>0?`+${money(x)}`:x<0?`-${money(Math.abs(x))}`:money(0)}
+function signedPercent(v){const x=n(v);return x>0?`+${x.toFixed(2)}%`:x<0?`${x.toFixed(2)}%`:'0.00%'}
+function pnlClass(v){const x=n(v);return x>0?'positive':x<0?'negative':'neutral'}
 function today(){return new Date().toISOString().slice(0,10)}
 function nowLocal(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)}
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)}
@@ -78,7 +81,7 @@ function render(){
 }
 function foreignMarketTwd(){const fx=n(data.settings.usdTwd);return data.foreignAssets.reduce((s,x)=>s+n(x.units)*n(x.currentPriceOriginal)*fx,0)}
 function foreignCostTwd(){const fx=n(data.settings.usdTwd);return data.foreignAssets.reduce((s,x)=>s+n(x.totalCostOriginal)*fx,0)}
-function renderSummary(){const hm=data.holdings.reduce((s,x)=>s+n(x.shares)*n(x.currentPrice),0),hc=data.holdings.reduce((s,x)=>s+n(x.totalCost),0),t=combinedTrust(),fm=foreignMarketTwd(),fc=foreignCostTwd(),tm=hm+t.currentValue+fm,tc=hc+t.principal+fc,p=tm-tc;sumMarket.textContent=money(tm);sumCost.textContent=money(tc);sumPnl.textContent=money(p);sumPnl.className=p>=0?'positive':'negative';sumCashDiv.textContent=money(data.dividends.filter(x=>x.mode==='cash').reduce((s,x)=>s+n(x.amount),0));sumReinvestDiv.textContent=money(data.dividends.filter(x=>x.mode==='reinvest').reduce((s,x)=>s+n(x.amount),0));sumForeign.textContent=money(fm)}
+function renderSummary(){const hm=data.holdings.reduce((s,x)=>s+n(x.shares)*n(x.currentPrice),0),hc=data.holdings.reduce((s,x)=>s+n(x.totalCost),0),t=combinedTrust(),fm=foreignMarketTwd(),fc=foreignCostTwd(),tm=hm+t.currentValue+fm,tc=hc+t.principal+fc,p=tm-tc;sumMarket.textContent=money(tm);sumCost.textContent=money(tc);sumPnl.textContent=signedMoney(p);sumPnl.className=pnlClass(p);sumCashDiv.textContent=money(data.dividends.filter(x=>x.mode==='cash').reduce((s,x)=>s+n(x.amount),0));sumReinvestDiv.textContent=money(data.dividends.filter(x=>x.mode==='reinvest').reduce((s,x)=>s+n(x.amount),0));sumForeign.textContent=money(fm)}
 function holdingCard(x){
  const market=n(x.shares)*n(x.currentPrice),pnl=market-n(x.totalCost),avg=n(x.averageCost)|| (n(x.shares)?n(x.totalCost)/n(x.shares):0);
  return `<article class="asset-card">
@@ -88,7 +91,7 @@ function holdingCard(x){
    <div><span>成本均價</span><strong>NT$ ${price(avg)}</strong></div>
    <div><span>總投入成本</span><strong>${money(x.totalCost)}</strong></div>
    <div><span>市值</span><strong>${money(market)}</strong></div>
-   <div><span>參考損益</span><strong class="${pnl>=0?'positive':'negative'}">${money(pnl)}</strong></div>
+   <div><span>參考損益</span><strong class="${pnlClass(pnl)}">${signedMoney(pnl)}</strong><small class="return-rate ${pnlClass(pnl)}">${signedPercent(n(x.totalCost)?pnl/n(x.totalCost)*100:0)}</small></div>
    <div><span>更新時間</span><strong>${x.priceUpdatedAt?new Date(x.priceUpdatedAt).toLocaleString('zh-TW'):'—'}</strong></div>
   </div>
   <div class="card-actions"><button class="mini" data-edit-holding="${x.id}">編輯</button><button class="mini delete" data-delete-holding="${x.id}">刪除</button></div>
@@ -106,8 +109,8 @@ function trustHtml(r){
   <span>參考現值</span><strong>${money(r.currentValue)}</strong>
   <span>本金餘額</span><strong>${money(r.principal)}</strong>
   <span>應付費用</span><strong>${money(r.fees)}</strong>
-  <span>參考損益</span><strong class="${r.pnl>=0?'positive':'negative'}">${money(r.pnl)}</strong>
-  <span>參考報酬率</span><strong class="${r.returnRate>=0?'positive':'negative'}">${r.returnRate.toFixed(2)}%</strong>
+  <span>參考損益</span><strong class="${pnlClass(r.pnl)}">${signedMoney(r.pnl)}</strong>
+  <span>參考報酬率</span><strong class="${pnlClass(r.returnRate)}">${signedPercent(r.returnRate)}</strong>
   <span>推算成本均價</span><strong>NT$ ${price(r.avgCost)}</strong>
  </div>`;
 }
@@ -117,7 +120,7 @@ function renderTrust(){
  const rows=[...data.trustSnapshots].sort((a,b)=>b.date.localeCompare(a.date));
  trustHistory.innerHTML=rows.map(r=>{const c=trustCalc(r);return `<tr><td>${r.date}</td><td>${r.kind==='self'?'自提':'公提'}</td><td>${n(r.shares).toLocaleString()}</td><td>${money(r.marketValue)}</td><td>${money(r.cash)}</td><td>${money(r.principal)}</td><td>NT$ ${price(c.avgCost)}</td><td><button class="mini" data-edit-trust="${r.id}">編輯</button> <button class="mini delete" data-delete-trust="${r.id}">刪除</button></td></tr>`}).join('')||'<tr><td colspan="8" class="muted">尚無資料</td></tr>';
 }
-function foreignCard(x){const fx=n(data.settings.usdTwd),mo=n(x.units)*n(x.currentPriceOriginal),mt=mo*fx,avg=n(x.averageCostOriginal)||(n(x.units)?n(x.totalCostOriginal)/n(x.units):0),p=mo-n(x.totalCostOriginal);return `<article class="asset-card"><header><div><h3>${x.symbol}</h3><small>${x.name}</small></div><strong>USD ${price(x.currentPriceOriginal)}</strong></header><div class="asset-stats"><div><span>持有單位</span><strong>${n(x.units).toLocaleString()}</strong></div><div><span>成本均價</span><strong>USD ${price(avg)}</strong></div><div><span>原幣市值</span><strong>USD ${price(mo)}</strong></div><div><span>折合台幣</span><strong>${money(mt)}</strong></div><div><span>原幣損益</span><strong class="${p>=0?'positive':'negative'}">USD ${price(p)}</strong></div><div><span>累積配息</span><strong>USD ${price(x.cumulativeDividendsOriginal)}</strong></div></div><div class="card-actions"><button class="mini" data-edit-foreign="${x.id}">編輯</button><button class="mini delete" data-delete-foreign="${x.id}">刪除</button></div></article>`}
+function foreignCard(x){const fx=n(data.settings.usdTwd),mo=n(x.units)*n(x.currentPriceOriginal),mt=mo*fx,avg=n(x.averageCostOriginal)||(n(x.units)?n(x.totalCostOriginal)/n(x.units):0),p=mo-n(x.totalCostOriginal);return `<article class="asset-card"><header><div><h3>${x.symbol}</h3><small>${x.name}</small></div><strong>USD ${price(x.currentPriceOriginal)}</strong></header><div class="asset-stats"><div><span>持有單位</span><strong>${n(x.units).toLocaleString()}</strong></div><div><span>成本均價</span><strong>USD ${price(avg)}</strong></div><div><span>原幣市值</span><strong>USD ${price(mo)}</strong></div><div><span>折合台幣</span><strong>${money(mt)}</strong></div><div><span>原幣損益</span><strong class="${pnlClass(p)}">${p>0?'+':p<0?'-':''}USD ${price(Math.abs(p))}</strong></div><div><span>累積配息</span><strong>USD ${price(x.cumulativeDividendsOriginal)}</strong></div></div><div class="card-actions"><button class="mini" data-edit-foreign="${x.id}">編輯</button><button class="mini delete" data-delete-foreign="${x.id}">刪除</button></div></article>`}
 function renderForeign(){foreignCards.innerHTML=data.foreignAssets.map(foreignCard).join('')||'<div class="muted">尚無海外資產</div>';fxRateDisplay.textContent=n(data.settings.usdTwd)?price(data.settings.usdTwd):'尚未設定';fxUpdatedDisplay.textContent=data.settings.fxUpdatedAt?new Date(data.settings.fxUpdatedAt).toLocaleString('zh-TW'):'—'}
 function renderAllocation(){const rows=[{name:'台股 ETF',value:data.holdings.filter(x=>x.type.includes('ETF')).reduce((s,x)=>s+n(x.shares)*n(x.currentPrice),0),color:'#60a5fa'},{name:'台股個股',value:data.holdings.filter(x=>!x.type.includes('ETF')).reduce((s,x)=>s+n(x.shares)*n(x.currentPrice),0),color:'#34d399'},{name:'員工信託',value:combinedTrust().currentValue,color:'#f59e0b'},{name:'海外／基金',value:foreignMarketTwd(),color:'#a78bfa'}].filter(x=>x.value>0),total=rows.reduce((s,x)=>s+x.value,0);allocationTotal.textContent=money(total);if(!total){allocationPie.style.background='#1f2937';allocationLegend.innerHTML='<div class="muted">尚無資料</div>';return}let st=0,segs=[];rows.forEach(r=>{let e=st+r.value/total*360;segs.push(`${r.color} ${st}deg ${e}deg`);st=e});allocationPie.style.background=`conic-gradient(${segs.join(',')})`;allocationLegend.innerHTML=rows.map(r=>`<div class="legend-row"><i class="legend-dot" style="background:${r.color}"></i><span>${r.name}</span><small>${money(r.value)}</small><strong>${(r.value/total*100).toFixed(1)}%</strong></div>`).join('')}
 function fillAssetSelect(){
