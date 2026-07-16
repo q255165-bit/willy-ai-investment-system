@@ -38,6 +38,30 @@ function validConfig(config) {
   return Boolean(config?.apiKey && config?.authDomain && config?.projectId && config?.appId);
 }
 
+function maskValue(value, head=6, tail=4) {
+  if (!value) return '未設定';
+  const s = String(value).trim();
+  if (s.length <= head + tail) return s;
+  return `${s.slice(0, head)}••••${s.slice(-tail)}`;
+}
+
+function setDiagnostic(id, text, state='warn') {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = state === 'ok' ? 'diagnostic-ok' : state === 'error' ? 'diagnostic-error' : 'diagnostic-warn';
+}
+
+function renderDiagnostics() {
+  const config = loadConfig() || {};
+  setDiagnostic('diagApiKey', config.apiKey ? maskValue(config.apiKey, 6, 6) : '未設定', config.apiKey ? 'ok' : 'error');
+  setDiagnostic('diagAuthDomain', config.authDomain || '未設定', config.authDomain ? 'ok' : 'error');
+  setDiagnostic('diagProjectId', config.projectId || '未設定', config.projectId ? 'ok' : 'error');
+  setDiagnostic('diagAppId', config.appId ? maskValue(config.appId, 8, 8) : '未設定', config.appId ? 'ok' : 'error');
+  setDiagnostic('diagAuth', auth ? (user ? `已登入：${user.email}` : '已初始化，未登入') : '未初始化', auth ? 'ok' : 'warn');
+  setDiagnostic('diagFirestore', db ? '已初始化' : '未初始化', db ? 'ok' : 'warn');
+}
+
 function setStatus(mode, text) {
   const dot = document.querySelector('#cloudStatus .status-dot');
   if (dot) dot.className = `status-dot ${mode}`;
@@ -62,6 +86,7 @@ function updateUI() {
         ? '已登入，資料會自動同步。'
         : 'Firebase 已設定，請使用 Google 登入。';
   }
+  renderDiagnostics();
 }
 
 function cloudRef() {
@@ -123,6 +148,13 @@ async function initializeCloud() {
     updateUI();
     return;
   }
+  if (!String(config.apiKey).startsWith('AIza')) {
+    setStatus('error', 'apiKey 格式錯誤');
+    setDiagnostic('diagApiKey', '格式錯誤：應以 AIza 開頭', 'error');
+    toast('apiKey 格式錯誤，請重新設定 Firebase');
+    updateUI();
+    return;
+  }
 
   try {
     const app = getApps().length ? getApps()[0] : initializeApp(config);
@@ -169,11 +201,64 @@ document.addEventListener('click', event => {
 
 $('cloudSetupForm')?.addEventListener('submit', event => {
   event.preventDefault();
-  const config = Object.fromEntries(new FormData(event.target).entries());
+  const raw = Object.fromEntries(new FormData(event.target).entries());
+  const config = {
+    apiKey: String(raw.apiKey || '').trim().replace(/^["']|["'],?$/g, ''),
+    authDomain: String(raw.authDomain || '').trim().replace(/^["']|["'],?$/g, ''),
+    projectId: String(raw.projectId || '').trim().replace(/^["']|["'],?$/g, ''),
+    appId: String(raw.appId || '').trim().replace(/^["']|["'],?$/g, '')
+  };
+
+  if (!validConfig(config)) {
+    toast('Firebase 設定不完整，請確認四個欄位');
+    return;
+  }
+  if (!config.apiKey.startsWith('AIza')) {
+    toast('apiKey 格式不正確，應以 AIza 開頭');
+    return;
+  }
+  if (!config.authDomain.includes('.firebaseapp.com')) {
+    toast('authDomain 格式不正確');
+    return;
+  }
+  if (!config.appId.includes(':web:')) {
+    toast('appId 格式不正確');
+    return;
+  }
+
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  renderDiagnostics();
   event.target.closest('dialog')?.close();
-  toast('Firebase 設定已儲存');
-  setTimeout(() => location.reload(), 800);
+  toast('Firebase 設定已儲存並驗證格式');
+  setTimeout(() => location.reload(), 900);
+});
+
+$('testFirebaseBtn')?.addEventListener('click', async () => {
+  const config = loadConfig();
+  if (!validConfig(config)) {
+    toast('Firebase 設定不完整');
+    renderDiagnostics();
+    return;
+  }
+  setStatus('syncing', '測試連線中');
+  try {
+    const testApp = getApps().length ? getApps()[0] : initializeApp(config);
+    const testAuth = getAuth(testApp);
+    const testDb = getFirestore(testApp);
+    auth = testAuth;
+    db = testDb;
+    setDiagnostic('diagAuth', '初始化成功', 'ok');
+    setDiagnostic('diagFirestore', '初始化成功', 'ok');
+    setStatus('online', 'Firebase 可用');
+    toast('Firebase 初始化測試成功');
+  } catch (error) {
+    console.error(error);
+    setStatus('error', 'Firebase 測試失敗');
+    setDiagnostic('diagAuth', `失敗：${error.code || error.message}`, 'error');
+    setDiagnostic('diagFirestore', '尚未連線', 'error');
+    toast(`Firebase 測試失敗：${error.message}`);
+  }
+  updateUI();
 });
 
 $('loginBtn')?.addEventListener('click', async () => {

@@ -61,3 +61,12 @@ Manual Control Edition
 - 修正 Google 登入按鈕可能無法使用
 - Firebase 設定儲存後顯示提示並自動重新載入
 - 整理初始化、登入、同步與錯誤顯示流程
+
+## V5.1.0 Cloud Diagnostics
+- 新增 Firebase 狀態檢查面板
+- 顯示 apiKey、authDomain、projectId、appId 是否成功儲存
+- 顯示 Authentication 與 Firestore 初始化狀態
+- 新增「測試 Firebase 連線」按鈕
+- Firebase 設定儲存時自動移除空格、引號與逗號
+- 儲存前檢查 apiKey、authDomain、appId 格式
+- apiKey 錯誤時直接顯示原因，不再等到 Google 登入才報錯
