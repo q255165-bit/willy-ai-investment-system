@@ -70,3 +70,11 @@ Manual Control Edition
 - Firebase 設定儲存時自動移除空格、引號與逗號
 - 儲存前檢查 apiKey、authDomain、appId 格式
 - apiKey 錯誤時直接顯示原因，不再等到 Google 登入才報錯
+
+## V5.1.1 Google Auth Fix
+- Google 登入固定使用單一具名 Firebase App：wais-main
+- 不再沿用其他模組或舊版本建立的預設 Firebase App
+- 設定變更時刪除錯誤 App 並以最新設定重新初始化
+- 登入前比對儲存 apiKey 與 Authentication 實際 apiKey
+- 測試連線會確認 Firebase App 的四項設定完全一致
+- 儲存設定後直接重新初始化，不需依賴舊頁面狀態
