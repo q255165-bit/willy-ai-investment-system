@@ -54,3 +54,10 @@ Manual Control Edition
 - 啟動時強制檢查新版
 - 自動清除舊快取
 - 新增重新載入最新版按鈕
+
+## V5.0.3 Firebase Fix
+- 修正 cloud-sync.js 殘留 Email/Password 程式碼造成模組中斷
+- 修正 Firebase 設定儲存後無明顯反應
+- 修正 Google 登入按鈕可能無法使用
+- Firebase 設定儲存後顯示提示並自動重新載入
+- 整理初始化、登入、同步與錯誤顯示流程
