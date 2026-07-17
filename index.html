@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
-  <title>WAIS V5.1.1 Google Auth Fix</title>
+  <title>WAIS V5.2.0 Clean Cloud Sync</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
 <header class="topbar">
   <div>
     <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-    <h1>投資管理中心 <span>V5.1.1 Google Auth Fix</span></h1>
+    <h1>投資管理中心 <span>V5.2.0 Clean Cloud Sync</span></h1>
   </div>
   <div class="cloud-status" id="cloudStatus"><span class="status-dot offline"></span><span id="cloudStatusText">本機模式</span></div></header>
 
@@ -96,21 +96,7 @@
     <div class="panel backup-panel">
       <h2>資料備份與還原</h2>
       <p>V4.0.0 支援美元資產與匯率換算，總資產不含現金。</p>
-      <div class="sync-panel"><h3>雲端同步</h3><p id="syncDescription">尚未連接 Firebase。完成設定後，手機與電腦可使用同一帳號同步。</p>
-        <div class="cloud-diagnostics">
-          <h4>Firebase 狀態檢查</h4>
-          <div class="diagnostic-grid">
-            <div><span>apiKey</span><strong id="diagApiKey">未設定</strong></div>
-            <div><span>authDomain</span><strong id="diagAuthDomain">未設定</strong></div>
-            <div><span>projectId</span><strong id="diagProjectId">未設定</strong></div>
-            <div><span>appId</span><strong id="diagAppId">未設定</strong></div>
-            <div><span>Authentication</span><strong id="diagAuth">未初始化</strong></div>
-            <div><span>Firestore</span><strong id="diagFirestore">未初始化</strong></div>
-          </div>
-          <button class="ghost" id="testFirebaseBtn" type="button">測試 Firebase 連線</button>
-        </div>
-
-        <div class="sync-actions"><button class="primary" data-open="cloudSetupDialog">設定 Firebase</button><button class="ghost" id="loginBtn">使用 Google 登入</button><button class="ghost" id="syncNowBtn" disabled>立即同步</button><button class="danger" id="logoutBtn" disabled>登出</button></div><div class="sync-meta"><span>登入帳號：<strong id="signedInUser">未登入</strong></span><span>最後同步：<strong id="lastSyncAt">—</strong></span></div></div><div class="backup-actions"><button id="forceUpdateBtn" class="ghost">重新載入最新版</button>
+      <div class="sync-panel"><h3>雲端同步</h3><p id="syncDescription">尚未連接 Firebase。完成設定後，手機與電腦可使用同一帳號同步。</p><div class="sync-actions"><button class="primary" data-open="cloudSetupDialog">設定 Firebase</button><button class="ghost" id="testFirebaseBtn">測試 Firebase</button><button class="ghost" id="loginBtn">使用 Google 登入</button><button class="ghost" id="syncNowBtn" disabled>立即同步</button><button class="danger" id="logoutBtn" disabled>登出</button></div><div class="sync-meta"><span>登入帳號：<strong id="signedInUser">未登入</strong></span><span>最後同步：<strong id="lastSyncAt">—</strong></span></div></div><div class="backup-actions">
         <button id="exportBtn" class="primary">匯出 JSON</button>
         <label class="file-button">匯入 JSON<input id="importFile" type="file" accept=".json,application/json"></label>
         <button class="ghost" data-open="settingsDialog">匯率設定</button><button id="restoreDefaultBtn" class="ghost">恢復 Willy 初始資料</button>

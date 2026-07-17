@@ -1,5 +1,5 @@
 
-const APP_VERSION='5.1.1';
+const APP_VERSION='5.2.0';
 const KEY='wais-v5.0-data';
 
 const defaultData=()=>({
@@ -205,19 +205,3 @@ clearBtn.onclick=()=>{if(confirm('確定清除全部資料？')){data={version:A
 render();
 
 window.WAISBridge={getData:()=>JSON.parse(JSON.stringify(data)),setData:(incoming)=>{data={version:APP_VERSION,holdings:Array.isArray(incoming.holdings)?incoming.holdings:[],trustSnapshots:Array.isArray(incoming.trustSnapshots)?incoming.trustSnapshots:[],foreignAssets:Array.isArray(incoming.foreignAssets)?incoming.foreignAssets:[],settings:incoming.settings||{usdTwd:0,fxUpdatedAt:''},dividends:Array.isArray(incoming.dividends)?incoming.dividends:[]};localStorage.setItem(KEY,JSON.stringify(data));render()},getVersion:()=>APP_VERSION};window.dispatchEvent(new Event('wais-ready'));
-const forceUpdateBtn=document.getElementById('forceUpdateBtn');
-if(forceUpdateBtn)forceUpdateBtn.addEventListener('click',async()=>{
- try{
-  if('serviceWorker' in navigator){
-   const regs=await navigator.serviceWorker.getRegistrations();
-   for(const reg of regs){await reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}
-  }
-  const u=new URL(location.href);u.searchParams.set('_wais',Date.now());location.replace(u);
- }catch(e){location.reload();}
-});
-if('serviceWorker' in navigator){
- navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
- window.addEventListener('load',async()=>{
-  try{const reg=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});await reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}catch(e){}
- });
-}

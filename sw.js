@@ -1,10 +1,66 @@
-const CACHE='wais-v5-1-1';
-const FILES=['./','./index.html','./styles.css','./app.js','./cloud-sync.js','./manifest.webmanifest'];
-self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)))});
-self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
-self.addEventListener('message',e=>{if(e.data?.type==='SKIP_WAITING')self.skipWaiting()});
-self.addEventListener('fetch',e=>{
- const r=e.request,u=new URL(r.url);
- if(r.mode==='navigate'){e.respondWith(fetch(r,{cache:'no-store'}).then(resp=>{const c=resp.clone();caches.open(CACHE).then(x=>x.put('./index.html',c));return resp}).catch(()=>caches.match('./index.html')));return}
- if(u.origin===self.location.origin)e.respondWith(caches.match(r).then(cached=>{const net=fetch(r,{cache:'no-store'}).then(resp=>{if(resp.ok){const c=resp.clone();caches.open(CACHE).then(x=>x.put(r,c))}return resp}).catch(()=>cached);return cached||net}))
+const CACHE = "wais-v5-2-0";
+const APP_FILES = [
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./cloud-sync.js",
+  "./manifest.webmanifest"
+];
+
+self.addEventListener("install", (event) => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(APP_FILES))
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE)
+            .map((key) => caches.delete(key))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  const url = new URL(request.url);
+
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request, { cache: "no-store" })
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) =>
+            cache.put("./index.html", copy)
+          );
+          return response;
+        })
+        .catch(() => caches.match("./index.html"))
+    );
+    return;
+  }
+
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(request, { cache: "no-store" })
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then((cache) =>
+              cache.put(request, copy)
+            );
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+  }
 });

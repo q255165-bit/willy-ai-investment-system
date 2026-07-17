@@ -1,397 +1,429 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
-  initializeApp, getApps, getApp, deleteApp
-} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-import {
-  getAuth, onAuthStateChanged, GoogleAuthProvider,
-  signInWithPopup, signInWithRedirect, getRedirectResult, signOut
+  getAuth,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, serverTimestamp
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
-const CONFIG_KEY = 'wais-firebase-config';
-const SYNC_TIME_KEY = 'wais-last-cloud-sync';
-const FIREBASE_APP_NAME = 'wais-main';
+const CONFIG_KEY = "wais-firebase-config";
+const LAST_SYNC_KEY = "wais-last-cloud-sync";
 
 let firebaseApp = null;
 let auth = null;
 let db = null;
-let user = null;
+let currentUser = null;
 let syncTimer = null;
-let initialized = false;
+let initPromise = null;
 
-const $ = id => document.getElementById(id);
+const byId = (id) => document.getElementById(id);
 
-function toast(message) {
-  const el = $('toast');
-  if (!el) return;
-  el.textContent = message;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2600);
+function showToast(message) {
+  const toast = byId("toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add("show");
+  window.setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
-function clean(value) {
-  return String(value ?? '')
+function setCloudStatus(mode, text) {
+  const dot = document.querySelector("#cloudStatus .status-dot");
+  if (dot) dot.className = `status-dot ${mode}`;
+
+  const label = byId("cloudStatusText");
+  if (label) label.textContent = text;
+}
+
+function normalizeValue(value) {
+  return String(value ?? "")
     .trim()
-    .replace(/^["']+|["',;]+$/g, '')
-    .replace(/\s+/g, '');
+    .replace(/^["']+|["',;]+$/g, "");
 }
 
 function normalizeConfig(raw = {}) {
   return {
-    apiKey: clean(raw.apiKey),
-    authDomain: clean(raw.authDomain),
-    projectId: clean(raw.projectId),
-    appId: clean(raw.appId)
+    apiKey: normalizeValue(raw.apiKey),
+    authDomain: normalizeValue(raw.authDomain),
+    projectId: normalizeValue(raw.projectId),
+    appId: normalizeValue(raw.appId)
   };
 }
 
 function loadConfig() {
   try {
-    return normalizeConfig(JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null') || {});
-  } catch {
+    const parsed = JSON.parse(localStorage.getItem(CONFIG_KEY) || "null");
+    return normalizeConfig(parsed || {});
+  } catch (error) {
+    console.error("Firebase config parse error:", error);
     return normalizeConfig({});
   }
 }
 
-function validConfig(config) {
-  return Boolean(
-    config.apiKey.startsWith('AIza') &&
-    config.authDomain.endsWith('.firebaseapp.com') &&
-    config.projectId &&
-    config.appId.includes(':web:')
-  );
+function validateConfig(config) {
+  const errors = [];
+
+  if (!config.apiKey.startsWith("AIza")) {
+    errors.push("apiKey 必須以 AIza 開頭");
+  }
+  if (!config.authDomain.endsWith(".firebaseapp.com")) {
+    errors.push("authDomain 應以 .firebaseapp.com 結尾");
+  }
+  if (!config.projectId) {
+    errors.push("projectId 不可空白");
+  }
+  if (!config.appId.includes(":web:")) {
+    errors.push("appId 應包含 :web:");
+  }
+
+  return errors;
 }
 
-function mask(value, head = 6, tail = 6) {
-  if (!value) return '未設定';
-  return value.length <= head + tail
-    ? value
-    : `${value.slice(0, head)}••••${value.slice(-tail)}`;
-}
-
-function setDiagnostic(id, text, state = 'warn') {
-  const el = $(id);
-  if (!el) return;
-  el.textContent = text;
-  el.className =
-    state === 'ok' ? 'diagnostic-ok' :
-    state === 'error' ? 'diagnostic-error' :
-    'diagnostic-warn';
-}
-
-function setStatus(mode, text) {
-  const dot = document.querySelector('#cloudStatus .status-dot');
-  if (dot) dot.className = `status-dot ${mode}`;
-  if ($('cloudStatusText')) $('cloudStatusText').textContent = text;
-}
-
-function renderDiagnostics() {
+function updateSyncUI() {
   const config = loadConfig();
-  setDiagnostic('diagApiKey', config.apiKey ? mask(config.apiKey) : '未設定', config.apiKey ? 'ok' : 'error');
-  setDiagnostic('diagAuthDomain', config.authDomain || '未設定', config.authDomain ? 'ok' : 'error');
-  setDiagnostic('diagProjectId', config.projectId || '未設定', config.projectId ? 'ok' : 'error');
-  setDiagnostic('diagAppId', config.appId ? mask(config.appId, 8, 8) : '未設定', config.appId ? 'ok' : 'error');
+  const configured = validateConfig(config).length === 0;
 
-  if (auth) {
-    const actualKey = clean(auth.app.options.apiKey);
-    const keyMatches = actualKey === config.apiKey;
-    setDiagnostic(
-      'diagAuth',
-      keyMatches
-        ? (user ? `已登入：${user.email}` : '已初始化，未登入')
-        : '初始化設定與儲存設定不一致',
-      keyMatches ? 'ok' : 'error'
-    );
-  } else {
-    setDiagnostic('diagAuth', '未初始化', 'warn');
+  const signedInUser = byId("signedInUser");
+  if (signedInUser) {
+    signedInUser.textContent = currentUser?.email || "未登入";
   }
 
-  setDiagnostic('diagFirestore', db ? '已初始化' : '未初始化', db ? 'ok' : 'warn');
-}
-
-function updateUI() {
-  const config = loadConfig();
-
-  if ($('signedInUser')) $('signedInUser').textContent = user?.email || '未登入';
-
-  if ($('lastSyncAt')) {
-    const last = localStorage.getItem(SYNC_TIME_KEY);
-    $('lastSyncAt').textContent = last
-      ? new Date(last).toLocaleString('zh-TW')
-      : '—';
+  const lastSyncAt = byId("lastSyncAt");
+  if (lastSyncAt) {
+    const value = localStorage.getItem(LAST_SYNC_KEY);
+    lastSyncAt.textContent = value
+      ? new Date(value).toLocaleString("zh-TW")
+      : "—";
   }
 
-  if ($('loginBtn')) $('loginBtn').disabled = !validConfig(config) || Boolean(user);
-  if ($('syncNowBtn')) $('syncNowBtn').disabled = !user;
-  if ($('logoutBtn')) $('logoutBtn').disabled = !user;
+  const loginBtn = byId("loginBtn");
+  const syncNowBtn = byId("syncNowBtn");
+  const logoutBtn = byId("logoutBtn");
+  const testFirebaseBtn = byId("testFirebaseBtn");
 
-  if ($('syncDescription')) {
-    $('syncDescription').textContent = !validConfig(config)
-      ? 'Firebase 設定不完整。'
-      : user
-        ? '已登入，資料會自動同步。'
-        : 'Firebase 已設定，請使用 Google 登入。';
-  }
+  if (loginBtn) loginBtn.disabled = !configured || Boolean(currentUser);
+  if (syncNowBtn) syncNowBtn.disabled = !currentUser;
+  if (logoutBtn) logoutBtn.disabled = !currentUser;
+  if (testFirebaseBtn) testFirebaseBtn.disabled = !configured;
 
-  renderDiagnostics();
-}
-
-async function createFreshFirebase(config) {
-  const existing = getApps().find(app => app.name === FIREBASE_APP_NAME);
-
-  if (existing) {
-    const oldOptions = existing.options || {};
-    const same =
-      clean(oldOptions.apiKey) === config.apiKey &&
-      clean(oldOptions.authDomain) === config.authDomain &&
-      clean(oldOptions.projectId) === config.projectId &&
-      clean(oldOptions.appId) === config.appId;
-
-    if (!same) {
-      await deleteApp(existing);
-    }
-  }
-
-  firebaseApp = getApps().find(app => app.name === FIREBASE_APP_NAME)
-    || initializeApp(config, FIREBASE_APP_NAME);
-
-  auth = getAuth(firebaseApp);
-  db = getFirestore(firebaseApp);
-
-  const actual = normalizeConfig(firebaseApp.options);
-  if (
-    actual.apiKey !== config.apiKey ||
-    actual.authDomain !== config.authDomain ||
-    actual.projectId !== config.projectId ||
-    actual.appId !== config.appId
-  ) {
-    throw new Error('Firebase App 實際設定與儲存設定不一致');
-  }
-}
-
-function cloudRef() {
-  return doc(db, 'users', user.uid, 'wais', 'portfolio');
-}
-
-async function upload() {
-  if (!user || !window.WAISBridge) return;
-
-  setStatus('syncing', '同步中');
-
-  try {
-    await setDoc(cloudRef(), {
-      data: window.WAISBridge.getData(),
-      appVersion: window.WAISBridge.getVersion(),
-      clientUpdatedAt: new Date().toISOString(),
-      updatedAt: serverTimestamp()
-    });
-
-    localStorage.setItem(SYNC_TIME_KEY, new Date().toISOString());
-    setStatus('online', '雲端已同步');
-    updateUI();
-    toast('同步完成');
-  } catch (error) {
-    console.error(error);
-    setStatus('error', '同步失敗');
-    toast(`同步失敗：${error.code || error.message}`);
-  }
-}
-
-async function initialSync() {
-  if (!user || !window.WAISBridge) return;
-
-  setStatus('syncing', '同步中');
-
-  try {
-    const snapshot = await getDoc(cloudRef());
-
-    if (snapshot.exists() && snapshot.data()?.data) {
-      window.WAISBridge.setData(snapshot.data().data);
-      localStorage.setItem(
-        SYNC_TIME_KEY,
-        snapshot.data().clientUpdatedAt || new Date().toISOString()
-      );
-      toast('已下載雲端資料');
+  const description = byId("syncDescription");
+  if (description) {
+    if (!configured) {
+      description.textContent = "尚未完成 Firebase 設定。";
+    } else if (currentUser) {
+      description.textContent = "已登入，資料修改後會自動同步。";
     } else {
-      await upload();
-      toast('已建立雲端資料');
+      description.textContent = "Firebase 已設定，請使用 Google 登入。";
     }
-
-    setStatus('online', '雲端已同步');
-    updateUI();
-  } catch (error) {
-    console.error(error);
-    setStatus('error', '同步失敗');
-    toast(`同步失敗：${error.code || error.message}`);
   }
 }
 
-async function initializeCloud(force = false) {
-  if (initialized && !force) return;
-  initialized = true;
-
-  const config = loadConfig();
-
-  if (!validConfig(config)) {
-    setStatus('offline', '本機模式');
-    updateUI();
-    return;
+async function initializeFirebase() {
+  if (auth && db && firebaseApp) {
+    return { firebaseApp, auth, db };
   }
 
-  try {
-    await createFreshFirebase(config);
+  if (initPromise) return initPromise;
 
-    onAuthStateChanged(auth, async currentUser => {
-      user = currentUser || null;
-      updateUI();
+  initPromise = (async () => {
+    const config = loadConfig();
+    const errors = validateConfig(config);
 
-      if (user) {
-        setStatus('online', '雲端已連線');
-        await initialSync();
+    if (errors.length) {
+      throw new Error(errors.join("；"));
+    }
+
+    // This module creates exactly one Firebase app instance.
+    firebaseApp = initializeApp(config);
+    auth = getAuth(firebaseApp);
+    db = getFirestore(firebaseApp);
+
+    // Confirm the Authentication instance is using the exact saved config.
+    const actualApiKey = normalizeValue(auth.app.options.apiKey);
+    if (actualApiKey !== config.apiKey) {
+      throw new Error("Authentication 使用的 apiKey 與儲存設定不一致");
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      currentUser = user || null;
+      updateSyncUI();
+
+      if (currentUser) {
+        setCloudStatus("online", "雲端已連線");
+        await initialCloudSync();
       } else {
-        setStatus('offline', '尚未登入');
+        setCloudStatus("offline", "尚未登入");
       }
     });
 
-    const redirectResult = await getRedirectResult(auth);
-    if (redirectResult?.user) toast('Google 登入成功');
+    try {
+      const redirectResult = await getRedirectResult(auth);
+      if (redirectResult?.user) {
+        showToast("Google 登入成功");
+      }
+    } catch (error) {
+      console.error("Redirect result error:", error);
+      showToast(`登入返回失敗：${error.code || error.message}`);
+    }
 
-    setStatus('online', 'Firebase 已初始化');
-    updateUI();
+    setCloudStatus("online", "Firebase 已初始化");
+    return { firebaseApp, auth, db };
+  })();
+
+  try {
+    return await initPromise;
   } catch (error) {
-    console.error(error);
-    setStatus('error', 'Firebase 初始化失敗');
-    setDiagnostic('diagAuth', `失敗：${error.code || error.message}`, 'error');
-    toast(`Firebase 初始化失敗：${error.code || error.message}`);
-    updateUI();
+    initPromise = null;
+    firebaseApp = null;
+    auth = null;
+    db = null;
+    throw error;
   }
 }
 
-window.addEventListener('wais-local-data-changed', () => {
-  if (!user) return;
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(upload, 1500);
-});
+function portfolioRef() {
+  if (!db || !currentUser) {
+    throw new Error("尚未登入，無法存取雲端資料");
+  }
+  return doc(db, "users", currentUser.uid, "wais", "portfolio");
+}
 
-document.addEventListener('click', event => {
-  const openSetup = event.target.closest('[data-open="cloudSetupDialog"]');
-  if (!openSetup) return;
+async function uploadLocalData({ silent = false } = {}) {
+  if (!currentUser || !window.WAISBridge) return;
 
-  const form = $('cloudSetupForm');
+  setCloudStatus("syncing", "同步中");
+
+  try {
+    const now = new Date().toISOString();
+
+    await setDoc(portfolioRef(), {
+      data: window.WAISBridge.getData(),
+      appVersion: window.WAISBridge.getVersion(),
+      clientUpdatedAt: now,
+      updatedAt: serverTimestamp()
+    });
+
+    localStorage.setItem(LAST_SYNC_KEY, now);
+    setCloudStatus("online", "雲端已同步");
+    updateSyncUI();
+
+    if (!silent) showToast("同步完成");
+  } catch (error) {
+    console.error("Cloud upload error:", error);
+    setCloudStatus("error", "同步失敗");
+    showToast(`同步失敗：${error.code || error.message}`);
+  }
+}
+
+async function initialCloudSync() {
+  if (!currentUser || !window.WAISBridge) return;
+
+  setCloudStatus("syncing", "同步中");
+
+  try {
+    const snapshot = await getDoc(portfolioRef());
+
+    if (snapshot.exists() && snapshot.data()?.data) {
+      window.WAISBridge.setData(snapshot.data().data);
+
+      const cloudTime =
+        snapshot.data().clientUpdatedAt || new Date().toISOString();
+
+      localStorage.setItem(LAST_SYNC_KEY, cloudTime);
+      showToast("已下載雲端資料");
+    } else {
+      await uploadLocalData({ silent: true });
+      showToast("已建立第一份雲端資料");
+    }
+
+    setCloudStatus("online", "雲端已同步");
+    updateSyncUI();
+  } catch (error) {
+    console.error("Initial sync error:", error);
+    setCloudStatus("error", "同步失敗");
+    showToast(`同步失敗：${error.code || error.message}`);
+  }
+}
+
+async function testFirebaseConnection() {
+  setCloudStatus("syncing", "測試中");
+
+  try {
+    const config = loadConfig();
+    const errors = validateConfig(config);
+    if (errors.length) throw new Error(errors.join("；"));
+
+    await initializeFirebase();
+
+    const actual = normalizeConfig(auth.app.options);
+    const same =
+      actual.apiKey === config.apiKey &&
+      actual.authDomain === config.authDomain &&
+      actual.projectId === config.projectId &&
+      actual.appId === config.appId;
+
+    if (!same) {
+      throw new Error("Firebase 實際初始化設定與儲存值不一致");
+    }
+
+    setCloudStatus("online", "Firebase 測試成功");
+    showToast("Firebase 初始化與設定比對成功");
+  } catch (error) {
+    console.error("Firebase test error:", error);
+    setCloudStatus("error", "Firebase 測試失敗");
+    showToast(`Firebase 測試失敗：${error.code || error.message}`);
+  }
+
+  updateSyncUI();
+}
+
+async function loginWithGoogle() {
+  try {
+    await initializeFirebase();
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+
+    try {
+      await signInWithPopup(auth, provider);
+      showToast("Google 登入成功");
+    } catch (error) {
+      const redirectCodes = new Set([
+        "auth/popup-blocked",
+        "auth/cancelled-popup-request"
+      ]);
+
+      if (redirectCodes.has(error.code)) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
+      if (error.code !== "auth/popup-closed-by-user") {
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.error("Google login error:", error);
+    setCloudStatus("error", "Google 登入失敗");
+    showToast(`Google 登入失敗：${error.code || error.message}`);
+  }
+}
+
+function resetFirebaseRuntime() {
+  firebaseApp = null;
+  auth = null;
+  db = null;
+  currentUser = null;
+  initPromise = null;
+}
+
+document.addEventListener("click", (event) => {
+  const openButton = event.target.closest(
+    '[data-open="cloudSetupDialog"]'
+  );
+  if (!openButton) return;
+
+  const form = byId("cloudSetupForm");
+  if (!form) return;
+
   const config = loadConfig();
   form.reset();
 
   Object.entries(config).forEach(([key, value]) => {
-    if (form.elements[key]) form.elements[key].value = value;
+    if (form.elements[key]) {
+      form.elements[key].value = value;
+    }
   });
 });
 
-$('cloudSetupForm')?.addEventListener('submit', async event => {
+byId("cloudSetupForm")?.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const config = normalizeConfig(
     Object.fromEntries(new FormData(event.target).entries())
   );
+  const errors = validateConfig(config);
 
-  if (!validConfig(config)) {
-    toast('Firebase 設定格式不完整或不正確');
+  if (errors.length) {
+    showToast(errors[0]);
     return;
   }
 
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-  event.target.closest('dialog')?.close();
+  event.target.closest("dialog")?.close();
 
-  initialized = false;
-  user = null;
-  auth = null;
-  db = null;
-  firebaseApp = null;
-
-  toast('Firebase 設定已儲存，正在重新初始化');
-  await initializeCloud(true);
+  resetFirebaseRuntime();
+  setCloudStatus("offline", "設定已儲存");
+  updateSyncUI();
+  showToast("Firebase 設定已儲存，請先按測試 Firebase");
 });
 
-$('testFirebaseBtn')?.addEventListener('click', async () => {
-  const config = loadConfig();
+byId("testFirebaseBtn")?.addEventListener(
+  "click",
+  testFirebaseConnection
+);
 
-  if (!validConfig(config)) {
-    toast('Firebase 設定不完整');
-    return;
-  }
+byId("loginBtn")?.addEventListener("click", loginWithGoogle);
 
-  setStatus('syncing', '測試連線中');
+byId("syncNowBtn")?.addEventListener("click", () =>
+  uploadLocalData()
+);
 
-  try {
-    await createFreshFirebase(config);
-
-    const actualKey = clean(auth.app.options.apiKey);
-    if (actualKey !== config.apiKey) {
-      throw new Error('Google 登入使用的 apiKey 與儲存值不一致');
-    }
-
-    setDiagnostic('diagAuth', `初始化成功；Key ${mask(actualKey)}`, 'ok');
-    setDiagnostic('diagFirestore', '初始化成功', 'ok');
-    setStatus('online', 'Firebase 可用');
-    toast('Firebase 設定與實際 App 完全一致');
-  } catch (error) {
-    console.error(error);
-    setStatus('error', 'Firebase 測試失敗');
-    setDiagnostic('diagAuth', `失敗：${error.code || error.message}`, 'error');
-    setDiagnostic('diagFirestore', '尚未連線', 'error');
-    toast(`Firebase 測試失敗：${error.code || error.message}`);
-  }
-
-  updateUI();
-});
-
-$('loginBtn')?.addEventListener('click', async () => {
-  const config = loadConfig();
-
-  if (!validConfig(config)) {
-    toast('請先正確設定 Firebase');
-    return;
-  }
-
-  try {
-    if (!auth) await initializeCloud(true);
-
-    const actualKey = clean(auth?.app?.options?.apiKey);
-    if (!actualKey || actualKey !== config.apiKey) {
-      throw new Error('登入前檢查失敗：Firebase apiKey 不一致');
-    }
-
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-
-    try {
-      await signInWithPopup(auth, provider);
-      toast('Google 登入成功');
-    } catch (error) {
-      if (
-        error.code === 'auth/popup-blocked' ||
-        error.code === 'auth/cancelled-popup-request'
-      ) {
-        await signInWithRedirect(auth, provider);
-      } else if (error.code !== 'auth/popup-closed-by-user') {
-        throw error;
-      }
-    }
-  } catch (error) {
-    console.error(error);
-    setStatus('error', 'Google 登入失敗');
-    toast(`Google 登入失敗：${error.code || error.message}`);
-  }
-});
-
-$('syncNowBtn')?.addEventListener('click', upload);
-
-$('logoutBtn')?.addEventListener('click', async () => {
+byId("logoutBtn")?.addEventListener("click", async () => {
   if (!auth) return;
-  await signOut(auth);
-  toast('已登出');
+
+  try {
+    await signOut(auth);
+    showToast("已登出");
+  } catch (error) {
+    console.error("Logout error:", error);
+    showToast(`登出失敗：${error.code || error.message}`);
+  }
 });
 
-window.addEventListener('wais-ready', () => initializeCloud());
-if (window.WAISBridge) initializeCloud();
-updateUI();
+window.addEventListener("wais-local-data-changed", () => {
+  if (!currentUser) return;
+
+  clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(
+    () => uploadLocalData({ silent: true }),
+    1500
+  );
+});
+
+async function startCloudModule() {
+  updateSyncUI();
+
+  const config = loadConfig();
+  if (validateConfig(config).length) {
+    setCloudStatus("offline", "本機模式");
+    return;
+  }
+
+  try {
+    await initializeFirebase();
+  } catch (error) {
+    console.error("Firebase startup error:", error);
+    setCloudStatus("error", "Firebase 初始化失敗");
+    showToast(`Firebase 初始化失敗：${error.code || error.message}`);
+  }
+
+  updateSyncUI();
+}
+
+window.addEventListener("wais-ready", startCloudModule);
+
+if (window.WAISBridge) {
+  startCloudModule();
+} else {
+  updateSyncUI();
+}

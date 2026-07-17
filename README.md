@@ -49,32 +49,12 @@ Manual Control Edition
 - 移除 Email／Password 建立帳號表單
 - 請在 Firebase Authentication 已授權網域加入 q255165-bit.github.io
 
-## V5.0.2
-- 修正 PWA 卡在舊版
-- 啟動時強制檢查新版
-- 自動清除舊快取
-- 新增重新載入最新版按鈕
-
-## V5.0.3 Firebase Fix
-- 修正 cloud-sync.js 殘留 Email/Password 程式碼造成模組中斷
-- 修正 Firebase 設定儲存後無明顯反應
-- 修正 Google 登入按鈕可能無法使用
-- Firebase 設定儲存後顯示提示並自動重新載入
-- 整理初始化、登入、同步與錯誤顯示流程
-
-## V5.1.0 Cloud Diagnostics
-- 新增 Firebase 狀態檢查面板
-- 顯示 apiKey、authDomain、projectId、appId 是否成功儲存
-- 顯示 Authentication 與 Firestore 初始化狀態
-- 新增「測試 Firebase 連線」按鈕
-- Firebase 設定儲存時自動移除空格、引號與逗號
-- 儲存前檢查 apiKey、authDomain、appId 格式
-- apiKey 錯誤時直接顯示原因，不再等到 Google 登入才報錯
-
-## V5.1.1 Google Auth Fix
-- Google 登入固定使用單一具名 Firebase App：wais-main
-- 不再沿用其他模組或舊版本建立的預設 Firebase App
-- 設定變更時刪除錯誤 App 並以最新設定重新初始化
-- 登入前比對儲存 apiKey 與 Authentication 實際 apiKey
-- 測試連線會確認 Firebase App 的四項設定完全一致
-- 儲存設定後直接重新初始化，不需依賴舊頁面狀態
+## V5.2.0 Clean Cloud Sync
+- 完整重寫 cloud-sync.js，不再沿用損壞的舊程式
+- 移除殘留的 Email／Password 登入程式
+- Firebase 只初始化一次
+- Google 登入、重新導向登入與登出重新實作
+- Firestore 上傳、初次下載與自動同步重新實作
+- 新增「測試 Firebase」按鈕
+- 登入前確認 Authentication 使用的 apiKey 與儲存設定一致
+- Service Worker 改成程式檔網路優先，避免舊版 cloud-sync.js 卡在快取
