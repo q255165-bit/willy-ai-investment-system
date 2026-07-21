@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
-  <title>WAIS V5.2.0 Clean Cloud Sync</title>
+  <title>WAIS V5.2.1 Canonical Firebase Config</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
 <header class="topbar">
   <div>
     <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-    <h1>投資管理中心 <span>V5.2.0 Clean Cloud Sync</span></h1>
+    <h1>投資管理中心 <span>V5.2.1 Canonical Firebase Config</span></h1>
   </div>
   <div class="cloud-status" id="cloudStatus"><span class="status-dot offline"></span><span id="cloudStatusText">本機模式</span></div></header>
 
@@ -169,7 +169,7 @@
 </form>
 </dialog>
 
-<dialog id="cloudSetupDialog"><form id="cloudSetupForm"><div class="dialog-head"><h3>Firebase 雲端設定</h3><button type="button" class="icon" data-close>×</button></div><p class="dialog-note">請填入 Firebase Web App 的設定值。</p><div class="form-grid"><label>apiKey<input name="apiKey" required></label><label>authDomain<input name="authDomain" required></label><label>projectId<input name="projectId" required></label><label>appId<input name="appId" required></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存設定</button></div></form></dialog><div id="toast" class="toast"></div>
+<dialog id="cloudSetupDialog"><form id="cloudSetupForm"><div class="dialog-head"><h3>Firebase 雲端設定</h3><button type="button" class="icon" data-close>×</button></div><p class="dialog-note">系統已內建並驗證本專案的 Firebase Web App 設定；直接按儲存即可。</p><div class="form-grid"><label>apiKey<input name="apiKey" required></label><label>authDomain<input name="authDomain" required></label><label>projectId<input name="projectId" required></label><label>appId<input name="appId" required></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存設定</button></div></form></dialog><div id="toast" class="toast"></div>
 <script src="app.js"></script><script type="module" src="cloud-sync.js"></script>
 </body>
 </html>

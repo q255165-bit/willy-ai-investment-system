@@ -19,6 +19,16 @@ import {
 const CONFIG_KEY = "wais-firebase-config";
 const LAST_SYNC_KEY = "wais-last-cloud-sync";
 
+const CANONICAL_FIREBASE_CONFIG = Object.freeze({
+  apiKey: "AIzaSyDYzXNJjFxOqb6DmkWAGqYo8e7wwPR1pCE",
+  authDomain: "wais-cloud-sync.firebaseapp.com",
+  projectId: "wais-cloud-sync",
+  appId: "1:330810522720:web:dba3bee4e5026e4e0d9705"
+});
+const CONFIG_SCHEMA_VERSION = "2026-07-21-canonical-1";
+const CONFIG_SCHEMA_KEY = "wais-firebase-config-schema";
+
+
 let firebaseApp = null;
 let auth = null;
 let db = null;
@@ -60,12 +70,35 @@ function normalizeConfig(raw = {}) {
 }
 
 function loadConfig() {
+  // The Firebase Web API key is public client configuration.
+  // Always migrate stale manually-entered values to the exact verified config.
+  const schema = localStorage.getItem(CONFIG_SCHEMA_KEY);
+  if (schema !== CONFIG_SCHEMA_VERSION) {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(CANONICAL_FIREBASE_CONFIG));
+    localStorage.setItem(CONFIG_SCHEMA_KEY, CONFIG_SCHEMA_VERSION);
+    return { ...CANONICAL_FIREBASE_CONFIG };
+  }
+
   try {
     const parsed = JSON.parse(localStorage.getItem(CONFIG_KEY) || "null");
-    return normalizeConfig(parsed || {});
+    const normalized = normalizeConfig(parsed || {});
+
+    const matchesCanonical =
+      normalized.apiKey === CANONICAL_FIREBASE_CONFIG.apiKey &&
+      normalized.authDomain === CANONICAL_FIREBASE_CONFIG.authDomain &&
+      normalized.projectId === CANONICAL_FIREBASE_CONFIG.projectId &&
+      normalized.appId === CANONICAL_FIREBASE_CONFIG.appId;
+
+    if (!matchesCanonical) {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(CANONICAL_FIREBASE_CONFIG));
+      return { ...CANONICAL_FIREBASE_CONFIG };
+    }
+
+    return normalized;
   } catch (error) {
     console.error("Firebase config parse error:", error);
-    return normalizeConfig({});
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(CANONICAL_FIREBASE_CONFIG));
+    return { ...CANONICAL_FIREBASE_CONFIG };
   }
 }
 
@@ -315,6 +348,7 @@ async function loginWithGoogle() {
     console.error("Google login error:", error);
     setCloudStatus("error", "Google 登入失敗");
     showToast(`Google 登入失敗：${error.code || error.message}`);
+    console.error("Canonical API key used:", CANONICAL_FIREBASE_CONFIG.apiKey);
   }
 }
 
@@ -335,7 +369,7 @@ document.addEventListener("click", (event) => {
   const form = byId("cloudSetupForm");
   if (!form) return;
 
-  const config = loadConfig();
+  const config = { ...CANONICAL_FIREBASE_CONFIG };
   form.reset();
 
   Object.entries(config).forEach(([key, value]) => {
@@ -348,23 +382,14 @@ document.addEventListener("click", (event) => {
 byId("cloudSetupForm")?.addEventListener("submit", (event) => {
   event.preventDefault();
 
-  const config = normalizeConfig(
-    Object.fromEntries(new FormData(event.target).entries())
-  );
-  const errors = validateConfig(config);
-
-  if (errors.length) {
-    showToast(errors[0]);
-    return;
-  }
-
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(CANONICAL_FIREBASE_CONFIG));
+  localStorage.setItem(CONFIG_SCHEMA_KEY, CONFIG_SCHEMA_VERSION);
   event.target.closest("dialog")?.close();
 
   resetFirebaseRuntime();
-  setCloudStatus("offline", "設定已儲存");
+  setCloudStatus("offline", "設定已套用");
   updateSyncUI();
-  showToast("Firebase 設定已儲存，請先按測試 Firebase");
+  showToast("已套用經 Firebase Console 驗證的正確設定");
 });
 
 byId("testFirebaseBtn")?.addEventListener(

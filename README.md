@@ -58,3 +58,11 @@ Manual Control Edition
 - 新增「測試 Firebase」按鈕
 - 登入前確認 Authentication 使用的 apiKey 與儲存設定一致
 - Service Worker 改成程式檔網路優先，避免舊版 cloud-sync.js 卡在快取
+
+## V5.2.1 Canonical Firebase Config
+- 已從 Firebase Console 截圖逐字核對真正的 apiKey
+- 正確 apiKey：`AIzaSyDYzXNJjFxOqb6DmkWAGqYo8e7wwPR1pCE`
+- 啟動時自動覆蓋過去手動輸入的錯誤或舊 Firebase 設定
+- Firebase 設定視窗已預載正確值，不需再手動抄寫
+- 保留 Google 登入、Firestore 同步與本機資料
+- 快取版本已更新，避免舊設定與舊 cloud-sync.js 殘留
