@@ -38,20 +38,38 @@ let initPromise = null;
 
 const byId = (id) => document.getElementById(id);
 
-function showToast(message) {
+function showToast(message, type = "") {
   const toast = byId("toast");
   if (!toast) return;
   toast.textContent = message;
-  toast.classList.add("show");
-  window.setTimeout(() => toast.classList.remove("show"), 2600);
+  toast.className = `toast show ${type}`.trim();
+  window.setTimeout(() => { toast.className = "toast"; }, 2600);
+}
+
+function setSyncVisual(state, label, detail = "") {
+  const indicator = byId("syncIndicator");
+  const stateLabel = byId("syncStateLabel");
+  const stateDetail = byId("syncStateDetail");
+  if (indicator) indicator.className = `sync-indicator ${state}`;
+  if (stateLabel) stateLabel.textContent = label;
+  if (stateDetail) stateDetail.textContent = detail;
+}
+
+function formatSyncTime(iso) {
+  return iso ? new Date(iso).toLocaleString("zh-TW") : "尚未同步";
 }
 
 function setCloudStatus(mode, text) {
   const dot = document.querySelector("#cloudStatus .status-dot");
   if (dot) dot.className = `status-dot ${mode}`;
-
   const label = byId("cloudStatusText");
   if (label) label.textContent = text;
+  const last = localStorage.getItem(LAST_SYNC_KEY);
+  if (mode === "syncing") setSyncVisual("syncing", "同步中", "正在將最新資料寫入雲端");
+  else if (mode === "online" && text.includes("同步")) setSyncVisual("success", "同步完成", `最後同步：${formatSyncTime(last)}`);
+  else if (mode === "error") setSyncVisual("error", "同步失敗", "請檢查網路後再試一次");
+  else if (mode === "offline") setSyncVisual("offline", "離線／未登入", "資料會先保留在本機");
+  else setSyncVisual("idle", text || "等待同步", last ? `最後同步：${formatSyncTime(last)}` : "尚未同步");
 }
 
 function normalizeValue(value) {
@@ -249,11 +267,11 @@ async function uploadLocalData({ silent = false } = {}) {
     setCloudStatus("online", "雲端已同步");
     updateSyncUI();
 
-    if (!silent) showToast("同步完成");
+    if (!silent) showToast("同步完成", "sync-success");
   } catch (error) {
     console.error("Cloud upload error:", error);
     setCloudStatus("error", "同步失敗");
-    showToast(`同步失敗：${error.code || error.message}`);
+    showToast(`同步失敗：${error.code || error.message}`, "sync-error");
   }
 }
 
@@ -272,10 +290,10 @@ async function initialCloudSync() {
         snapshot.data().clientUpdatedAt || new Date().toISOString();
 
       localStorage.setItem(LAST_SYNC_KEY, cloudTime);
-      showToast("已下載雲端資料");
+      showToast("已下載雲端資料", "sync-success");
     } else {
       await uploadLocalData({ silent: true });
-      showToast("已建立第一份雲端資料");
+      showToast("已建立第一份雲端資料", "sync-success");
     }
 
     setCloudStatus("online", "雲端已同步");
@@ -283,7 +301,7 @@ async function initialCloudSync() {
   } catch (error) {
     console.error("Initial sync error:", error);
     setCloudStatus("error", "同步失敗");
-    showToast(`同步失敗：${error.code || error.message}`);
+    showToast(`同步失敗：${error.code || error.message}`, "sync-error");
   }
 }
 
@@ -416,13 +434,24 @@ byId("logoutBtn")?.addEventListener("click", async () => {
 });
 
 window.addEventListener("wais-local-data-changed", () => {
-  if (!currentUser) return;
-
+  if (!currentUser) {
+    setSyncVisual("offline", "尚未登入", "資料已保存在本機，登入後再同步");
+    return;
+  }
   clearTimeout(syncTimer);
-  syncTimer = window.setTimeout(
-    () => uploadLocalData({ silent: true }),
-    1500
-  );
+  setSyncVisual("syncing", "等待自動同步", "資料變更已偵測，約 1.5 秒後同步");
+  syncTimer = window.setTimeout(() => uploadLocalData({ silent: true }), 1500);
+});
+
+window.addEventListener("offline", () => {
+  setCloudStatus("offline", "網路離線");
+  showToast("目前離線，資料會先保留在本機");
+});
+window.addEventListener("online", async () => {
+  setCloudStatus("syncing", "網路已恢復");
+  showToast("網路已恢復，正在同步");
+  if (currentUser) await uploadLocalData({ silent: true });
+  else setCloudStatus("offline", "尚未登入");
 });
 
 async function startCloudModule() {
