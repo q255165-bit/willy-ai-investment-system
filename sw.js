@@ -1,4 +1,4 @@
-const CACHE = "wais-v5-2-2";
+const CACHE = "wais-v5-2-3";
 const APP_FILES = [
   "./",
   "./index.html",

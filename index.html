@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
-  <title>WAIS V5.2.2 Auto Sync</title>
+  <title>WAIS V5.2.3 Broker P&L + Auto Time</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
 <header class="topbar">
   <div>
     <div class="eyebrow">WILLY AI INVESTMENT SYSTEM</div>
-    <h1>投資管理中心 <span>V5.2.2 Auto Sync</span></h1>
+    <h1>投資管理中心 <span>V5.2.3 Broker P&L + Auto Time</span></h1>
   </div>
   <div class="cloud-status" id="cloudStatus"><span class="status-dot offline"></span><span id="cloudStatusText">本機模式</span></div></header>
 
@@ -126,7 +126,7 @@
     <label>總投入成本<input name="totalCost" type="number" step="0.01" min="0" required></label>
     <label>成本均價<input name="averageCost" type="number" step="0.0001" min="0"></label>
     <label>現價<input name="currentPrice" type="number" step="0.0001" min="0"></label>
-    <label>現價更新時間<input name="priceUpdatedAt" type="datetime-local"></label>
+    <label class="full auto-time-note">更新時間<output>按下「儲存」時自動記錄目前日期與時間</output></label>
     <label>類型<select name="type"><option>ETF</option><option>主動式ETF</option><option>個股</option><option>基金</option><option>其他</option></select></label>
     <label class="full">備註<textarea name="note"></textarea></label>
   </div>
@@ -153,7 +153,7 @@
 </form>
 </dialog>
 
-<dialog id="foreignDialog"><form id="foreignForm"><div class="dialog-head"><h3>海外／基金資料</h3><button type="button" class="icon" data-close>×</button></div><input type="hidden" name="id"><div class="form-grid"><label>代碼<input name="symbol" required></label><label>名稱<input name="name" required></label><label>資產類型<select name="type"><option>債券基金</option><option>股票基金</option><option>海外個股</option><option>其他</option></select></label><label>幣別<select name="currency"><option value="USD">USD</option></select></label><label>持有單位<input name="units" type="number" step="0.0001" min="0" required></label><label>總投入成本（USD）<input name="totalCostOriginal" type="number" step="0.01" min="0" required></label><label>目前淨值／價格（USD）<input name="currentPriceOriginal" type="number" step="0.0001" min="0"></label><label>成本均價（USD）<input name="averageCostOriginal" type="number" step="0.0001" min="0"></label><label>累積配息（USD）<input name="cumulativeDividendsOriginal" type="number" step="0.01" min="0" value="0"></label><label>價格更新時間<input name="priceUpdatedAt" type="datetime-local"></label><label class="full">備註<textarea name="note"></textarea></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存</button></div></form></dialog><dialog id="settingsDialog"><form id="settingsForm"><div class="dialog-head"><h3>匯率設定</h3><button type="button" class="icon" data-close>×</button></div><div class="form-grid"><label>USD/TWD 匯率<input name="usdTwd" type="number" step="0.0001" min="0" required></label><label>匯率更新時間<input name="fxUpdatedAt" type="datetime-local"></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存</button></div></form></dialog><dialog id="dividendDialog">
+<dialog id="foreignDialog"><form id="foreignForm"><div class="dialog-head"><h3>海外／基金資料</h3><button type="button" class="icon" data-close>×</button></div><input type="hidden" name="id"><div class="form-grid"><label>代碼<input name="symbol" required></label><label>名稱<input name="name" required></label><label>資產類型<select name="type"><option>債券基金</option><option>股票基金</option><option>海外個股</option><option>其他</option></select></label><label>幣別<select name="currency"><option value="USD">USD</option></select></label><label>持有單位<input name="units" type="number" step="0.0001" min="0" required></label><label>總投入成本（USD）<input name="totalCostOriginal" type="number" step="0.01" min="0" required></label><label>目前淨值／價格（USD）<input name="currentPriceOriginal" type="number" step="0.0001" min="0"></label><label>成本均價（USD）<input name="averageCostOriginal" type="number" step="0.0001" min="0"></label><label>累積配息（USD）<input name="cumulativeDividendsOriginal" type="number" step="0.01" min="0" value="0"></label><label class="full auto-time-note">更新時間<output>按下「儲存」時自動記錄目前日期與時間</output></label><label class="full">備註<textarea name="note"></textarea></label></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存</button></div></form></dialog><dialog id="settingsDialog"><form id="settingsForm"><div class="dialog-head"><h3>系統設定</h3><button type="button" class="icon" data-close>×</button></div><div class="form-grid"><label>USD/TWD 匯率<input name="usdTwd" type="number" step="0.0001" min="0" required></label><label class="full auto-time-note">匯率更新時間<output>按下「儲存」時自動記錄目前日期與時間</output></label><label>券商手續費率（%）<input name="brokerFeePercent" type="number" step="0.0001" min="0" value="0.14"></label><label>ETF 賣出交易稅率（%）<input name="etfTaxPercent" type="number" step="0.0001" min="0" value="0.10"></label><label>個股賣出交易稅率（%）<input name="stockTaxPercent" type="number" step="0.0001" min="0" value="0.30"></label><p class="dialog-note full">台股卡片將以「市值－投入成本－預估手續費－預估交易稅」計算券商估算損益。不同券商折扣、最低手續費與取整規則可能造成少量差異。</p></div><div class="dialog-actions"><button type="button" class="ghost" data-close>取消</button><button class="primary">儲存</button></div></form></dialog><dialog id="dividendDialog">
 <form id="dividendForm">
   <div class="dialog-head"><h3>配息紀錄</h3><button type="button" class="icon" data-close>×</button></div>
   <input type="hidden" name="id">
